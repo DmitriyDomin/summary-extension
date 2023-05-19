@@ -1,0 +1,328 @@
+html {
+    --black-800: #3d3a39;
+    --black-400: #a39f9d;
+    --white-300: #f0efed;
+    --white-100: #FFFFFF;
+    --green-400: #08dfb2;
+    --yellow-600: #eeb819;
+    --red-500: #a2474d;
+    --blue-700: #1074a1;
+    --blue-800: #5e7b99;
+    --shadow: rgba(51,47,46, 180);
+    --main-text: var(--black-800);
+    --sub-text: var(--black-400);
+    --text-constrast: var(--white-100);
+    --background: var(--white-100);
+    ---additionalbackground: var(--white-300);
+    --sub-background: var(--green-400);
+    --border-color: var(--black-800);
+    --button-background-one: var(--blue-800);
+    --button-background-two: var(--red-500);
+    --button-background-three: var(--blue-700);
+}
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    width: 550px;
+    box-shadow: 5px 4px 7px var(--shadow);
+    color: var(--main-text);
+    padding: 25px 50px 25px 25px;
+    position: relative;
+}
+
+label {
+    font-size: 18px;
+    margin-right: 15px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+h1 {
+    font-size: 32px;
+    margin: 0;
+    color: var(--main-text);
+}
+
+.button {
+    padding: 15px;
+    border-radius: 5px;
+    color: var(--text-constrast);
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.button:hover {
+    filter: brightness(80%);
+}
+
+.language-picker {
+    width: 30px;
+    position: absolute;
+    height: 20px;
+    right: 10px;
+    top: 25px;
+    --selected-background: transparent;
+    --select-text-size: 16px;
+    --select-horizontal-padding: 8px;
+}
+
+.target-language-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+/*.target-language-label {*/
+/*    font-size: 18px;*/
+/*    margin-right: 15px;*/
+/*}*/
+
+.target-language {
+    --select-background: var(---additionalbackground);
+    width: 60%;
+}
+
+.summary-length-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.summary-length {
+    --select-background: var(---additionalbackground);
+    width: 60%;
+}
+
+.summarize-webpage {
+    width: 100%;
+    background: var(--button-background-one);
+    margin-bottom: 25px;
+}
+
+.save-content-tags {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.save-content-container {
+    margin-bottom: 30px;
+}
+
+.save-content-input {
+    padding: 10px;
+    flex-grow: 1;
+    font-size: 16px;
+    border-radius: 5px;
+    border: 1px solid var(--black-800);
+}
+
+.save-content-button {
+    background: var(--sub-background);
+    color: var(--main-text);
+}
+
+.button-twitter {
+    background: var(--button-background-three);
+}
+
+.button-email {
+    background: var(--button-background-one);
+}
+
+.share-container {
+    margin-bottom: 25px;
+}
+
+#summary {
+    margin-top: 10px;
+}
+
+.language-option {
+    position: relative;
+    height: 24px;
+    margin: 3px 0;
+    padding: 0 !important;
+    border: 0 !important;
+}
+
+.language-option::before {
+    position: absolute;
+    display: block;
+    content: "";
+    top: 0;
+    right: 0;
+    z-index: 99;
+    width: 30px;
+    height: 30px;
+    background-repeat: no-repeat;
+}
+
+.select-items .language-option::before {
+    z-index: -1;
+}
+
+.option-en::before {
+    background-image: url(images/flags/en.svg);
+}
+
+.option-it::before {
+    background-image: url(images/flags/it.svg);
+}
+
+.option-fr::before {
+    background-image: url(images/flags/fr.svg);
+}
+
+.option-de::before {
+    background-image: url(images/flags/de.svg);
+}
+
+.option-pt::before {
+    background-image: url(images/flags/pt.svg);
+}
+
+.option-es::before {
+    background-image: url(images/flags/es.svg);
+}
+
+.option-ru::before {
+    background-image: url(images/flags/ru.svg);
+}
+
+.option-ua::before {
+    background-image: url(images/flags/ua.svg);
+}
+
+.instant-summary__button:hover {
+    filter: brightness(80%);
+}
+
+.instant-summary-toggle {
+    position: relative;
+    font-size: 18px;
+    display: inline;
+    padding-right: 20px;
+    cursor: pointer;
+}
+
+.instant-summary-toggle::after {
+    position: absolute;
+    content: "";
+    top: 9px;
+    right: 0;
+    width: 0;
+    height: 0;
+    border: 6px solid transparent;
+}
+
+.instant-summary-toggle.closed::after {
+    border-color: var(--border-color) transparent transparent transparent;
+}
+
+.instant-summary-toggle.opened::after, .instant-summary-toggle.closing::after {
+    border-color: transparent transparent var(--border-color) transparent;
+    top: 2px;
+}
+
+.instant-summary-toggle.opened + .instant-summary {
+    display: flex;
+}
+
+.instant-summary-toggle.closed + .instant-summary {
+    display: none;
+}
+
+.instant-summary-toggle.closing + .instant-summary .instant-summary__textarea {
+    animation-name: removeBox;
+}
+
+.instant-summary-toggle.closing + .instant-summary .instant-summary__button {
+    animation-name: removeButton;
+}
+
+.instant-summary {
+    justify-content: space-between;
+    align-items: center;
+}
+
+.instant-summary__textarea {
+    animation-duration: 0.5s;
+    animation-name: createBox;
+    resize: none;
+    width: 80%;
+    height: 200px;
+    font-family: Arial;
+    font-size: 16px;
+    border-color: #a39f9d;
+}
+
+.instant-summary__button {
+    width: 80px;
+    height: 80px;
+    font-size: 40px;
+    font-family: MATH;
+    border-radius: 50%;
+    border: none;
+    background: #08dfb2;
+    cursor: pointer;
+    animation-name: createButton;
+    animation-duration: 0.5s;
+}
+
+
+@keyframes createBox {
+    from{
+        height:0;
+    }
+    to{
+        height: 200px;
+    }
+}
+
+@keyframes removeBox {
+    from{
+        height: 200px;
+    }
+    to{
+        height:0;
+    }
+}
+
+@keyframes removeButton {
+    from{
+        opacity: 1;
+        height: 80px;
+        font-size: 40px;
+        transform: rotate(0deg);
+    }
+    to{
+        transform: rotate(180deg);
+        font-size: 0;
+        height: 0;
+        opacity: 0;
+    }
+}
+
+@keyframes createButton {
+    from{
+        opacity: 0;
+        height: 0;
+        transform: rotate(180deg);
+    }
+    to{
+        height: 80px;
+        transform: rotate(0deg);
+        opacity: 1;
+    }
+}
+
+.instant-summary__textarea:focus {
+    outline: none;
+}

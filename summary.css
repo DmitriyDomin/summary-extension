@@ -1,0 +1,70 @@
+.summary-container-SE {
+    position: fixed;
+    z-index: 99999999;
+    top: 10px;
+    right: 10px;
+    width: 350px;
+    padding: 0 20px 40px 20px;
+    background-color: white;
+    border: 1px solid black;
+    border-radius: 5px;
+    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.3);
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+}
+
+.close-button-SE {
+    position: absolute;
+    right: 0;
+    top: 0;
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+.loading-spinner-SE {
+    display: inline-block;
+    width: 80px;
+    height: 80px;
+}
+.loading-spinner-SE:after {
+    content: " ";
+    display: block;
+    width: 64px;
+    height: 64px;
+    margin: 8px;
+    border-radius: 50%;
+    border: 6px solid #fff;
+    border-color: #08dfb2 transparent #08dfb2 transparent;
+    animation: lds-dual-ring 1.2s linear infinite;
+}
+
+.copy-button-SE {
+    background: #5e7b99;
+    border: none;
+    width: auto;
+    position: absolute;
+    padding: 5px;
+    font-size: 18px;
+    border-radius: 5px;
+    right: 10px;
+    bottom: 10px;
+    color: white;
+    cursor: pointer;
+}
+
+.copy-button-SE:hover {
+    filter: brightness(80%);
+}
+
+@keyframes lds-dual-ring {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}

@@ -1,0 +1,63 @@
+.custom-select {
+    --selected-background: var(--select-background, var(--sub-background));
+    --text-size: var(--select-text-size, 16px);
+    --vertical-padding: var(--select-vertical-padding, 8px);
+    --horisontal-padding: var(--select-horizontal-padding, 16px);
+    position: relative;
+    font-family: Arial;
+    font-size: var(--text-size);
+    color: var(--main-text);
+}
+
+.custom-select select {
+    display: none; /*hide original SELECT element: */
+}
+
+.select-selected {
+    background-color: var(--selected-background);
+    border-radius: 5px;
+}
+
+/* Style the arrow inside the select element: */
+.select-selected:after {
+    position: absolute;
+    content: "";
+    top: 18px;
+    right: 5px;
+    width: 0;
+    height: 0;
+    border: 6px solid transparent;
+    border-color: #fff transparent transparent transparent;
+}
+
+/* Point the arrow upwards when the select box is open (active): */
+.select-selected.select-arrow-active:after {
+    border-color: transparent transparent #fff transparent;
+    top: 7px;
+}
+
+/* style the items (options), including the selected item: */
+.select-items div,.select-selected {
+    padding: var(--vertical-padding) var(--horisontal-padding);
+    border: 1px solid transparent;
+    border-color: transparent transparent rgba(0, 0, 0, 0.1) transparent;
+    cursor: pointer;
+}
+
+/* Style items (options): */
+.select-items {
+    position: absolute;
+    background-color: var(--background);
+    left: 0;
+    right: 0;
+    z-index: 99;
+}
+
+/* Hide the items when the select box is closed: */
+.select-hide {
+    display: none;
+}
+
+.select-items div:hover, .same-as-selected {
+    background-color: rgba(0, 0, 0, 0.1);
+}

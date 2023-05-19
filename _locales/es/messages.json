@@ -1,0 +1,71 @@
+{
+  "extensionName": {
+    "message": "Extensión de Resumen"
+  },
+  "summarizeWebpageButton": {
+    "message": "Resumir Página Web"
+  },
+  "targetLanguage": {
+    "message": "Traducir al"
+  },
+  "noTranslation": {
+    "message": "Sin traducción"
+  },
+  "summaryLengthLabel": {
+    "message": "Longitud del resumen:"
+  },
+  "shortText": {
+    "message": "Corto (50-70 palabras)"
+  },
+  "mediumText": {
+    "message": "Medio (100-125 palabras)"
+  },
+  "longText": {
+    "message": "Largo (150-180 palabras)"
+  },
+  "tags": {
+    "message": "Introduzca etiquetas separadas por comas"
+  },
+  "tagsLabel": {
+    "message": "Etiquetas:"
+  },
+  "saveButton": {
+    "message": "Guardar Resumen"
+  },
+  "shareEmail": {
+    "message": "Compartir por correo electrónico"
+  },
+  "shareTwitter": {
+    "message": "Compartir en Twitter"
+  },
+  "closeButton": {
+    "message": "Cerrar"
+  },
+  "english": {
+    "message": "Inglés"
+  },
+  "italian": {
+    "message": "Italiano"
+  },
+  "french": {
+    "message": "Francés"
+  },
+  "german": {
+    "message": "Alemán"
+  },
+  "portuguese": {
+    "message": "Portugués"
+  },
+  "spanish": {
+    "message": "Español"
+  },
+  "russian": {
+    "message": "Ruso"
+  },
+  "ukrainian": {
+    "message": "Ucraniano"
+  },
+  "copy": {
+    "message": "Copiar"
+  }
+}

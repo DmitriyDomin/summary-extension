@@ -1,0 +1,71 @@
+{
+  "extensionName": {
+    "message": "Estensione Riepilogo"
+  },
+  "summarizeWebpageButton": {
+    "message": "Riassumi Pagina Web"
+  },
+  "targetLanguage": {
+    "message": "Tradurre in"
+  },
+  "noTranslation": {
+    "message": "Nessuna traduzione"
+  },
+  "summaryLengthLabel": {
+    "message": "Lunghezza del riepilogo:"
+  },
+  "shortText": {
+    "message": "Breve (50-70 parole)"
+  },
+  "mediumText": {
+    "message": "Medio (100-125 parole)"
+  },
+  "longText": {
+    "message": "Lungo (150-180 parole)"
+  },
+  "tags": {
+    "message": "Inserisci tag separati da virgole"
+  },
+  "tagsLabel": {
+    "message": "Tag:"
+  },
+  "saveButton": {
+    "message": "Salva Riepilogo"
+  },
+  "shareEmail": {
+    "message": "Condividi tramite Email"
+  },
+  "shareTwitter": {
+    "message": "Condividi su Twitter"
+  },
+  "closeButton": {
+    "message": "Chiudi"
+  },
+  "english": {
+    "message": "Inglese"
+  },
+  "italian": {
+    "message": "Italiano"
+  },
+  "french": {
+    "message": "Francese"
+  },
+  "german": {
+    "message": "Tedesco"
+  },
+  "portuguese": {
+    "message": "Portoghese"
+  },
+  "spanish": {
+    "message": "Spagnolo"
+  },
+  "russian": {
+    "message": "Russo"
+  },
+  "ukrainian": {
+    "message": "Ucraino"
+  },
+  "copy": {
+    "message": "Copia"
+  }
+}

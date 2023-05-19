@@ -1,0 +1,71 @@
+{
+  "extensionName": {
+    "message": "Расширение для резюмирования"
+  },
+  "summarizeWebpageButton": {
+    "message": "Резюмировать веб-страницу"
+  },
+  "targetLanguage": {
+    "message": "Перевести на"
+  },
+  "noTranslation": {
+    "message": "Не переводить"
+  },
+  "summaryLengthLabel": {
+    "message": "Длина сводки:"
+  },
+  "shortText": {
+    "message": "Короткая(50-70 words)"
+  },
+  "mediumText": {
+    "message": "Средняя(100-125 words)"
+  },
+  "longText": {
+    "message": "Длинная(150-180 words)"
+  },
+  "tags": {
+    "message": "Введите теги, разделённые запятыми"
+  },
+  "tagsLabel": {
+    "message": "Теги:"
+  },
+  "saveButton": {
+    "message": "Сохранить сводку"
+  },
+  "shareEmail": {
+    "message": "Поделиться через Email"
+  },
+  "shareTwitter": {
+    "message": "Поделиться в Twitter"
+  },
+  "closeButton": {
+    "message": "Закрыть"
+  },
+  "english": {
+    "message": "Английский"
+  },
+  "italian": {
+    "message": "Итальянский"
+  },
+  "french": {
+    "message": "Французский"
+  },
+  "german": {
+    "message": "Немецкий"
+  },
+  "portuguese": {
+    "message": "Португальский"
+  },
+  "spanish": {
+    "message": "Испанский"
+  },
+  "russian": {
+    "message": "Русский"
+  },
+  "ukrainian": {
+    "message": "Украинский"
+  },
+  "copy": {
+    "message": "Копировать"
+  }
+}

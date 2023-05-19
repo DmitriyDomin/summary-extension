@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Content Summarizer",
+  "version": "1.0",
+  "web_accessible_resources": [
+    {
+      "resources": ["summary.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "description": "Generate summaries of web content using GPT-4 API.",
+  "permissions": ["contextMenus", "activeTab", "storage"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "24": "images/icon24.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js", "gpt4_api.js"]
+    }
+  ],
+  "icons": {
+    "24": "images/icon24.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "default_locale": "en"
+}

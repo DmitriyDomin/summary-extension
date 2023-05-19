@@ -1,0 +1,71 @@
+{
+  "extensionName": {
+    "message": "Розширення для підсумків"
+  },
+  "summarizeWebpageButton": {
+    "message": "Підсумувати веб-сторінку"
+  },
+  "targetLanguage": {
+    "message": "Перекласти на"
+  },
+  "noTranslation": {
+    "message": "Без перекладу"
+  },
+  "summaryLengthLabel": {
+    "message": "Довжина підсумку:"
+  },
+  "shortText": {
+    "message": "Короткий (50-70 слів)"
+  },
+  "mediumText": {
+    "message": "Середній (100-125 слів)"
+  },
+  "longText": {
+    "message": "Довгий (150-180 слів)"
+  },
+  "tags": {
+    "message": "Введіть теги, розділені комами"
+  },
+  "tagsLabel": {
+    "message": "Теги:"
+  },
+  "saveButton": {
+    "message": "Зберегти підсумок"
+  },
+  "shareEmail": {
+    "message": "Поділитися через електронну пошту"
+  },
+  "shareTwitter": {
+    "message": "Поділитися у Twitter"
+  },
+  "closeButton": {
+    "message": "Закрити"
+  },
+  "english": {
+    "message": "Англійська"
+  },
+  "italian": {
+    "message": "Італійська"
+  },
+  "french": {
+    "message": "Французька"
+  },
+  "german": {
+    "message": "Німецька"
+  },
+  "portuguese": {
+    "message": "Португальська"
+  },
+  "spanish": {
+    "message": "Іспанська"
+  },
+  "russian": {
+    "message": "Російська"
+  },
+  "ukrainian": {
+    "message": "Українська"
+  },
+  "copy": {
+    "message": "Копіювати"
+  }
+}
