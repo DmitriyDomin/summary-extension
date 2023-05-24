@@ -1,32 +1,37 @@
 const lengthMap = { short: 50, medium: 100, long: 200 };
 const TARGET_LANGUAGE = 'targetLanguage';
-
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log(1234);
   importStyles();
   if (request.action === 'summarize' || request.action === 'summarizeWebpage') {
+    importStyles();
     const apiKey = 'REDACTED_OPENAI_API_KEY';
-    const targetLanguage = (await chrome.storage.local.get(TARGET_LANGUAGE))[TARGET_LANGUAGE];
-    const length = lengthMap[(await chrome.storage.local.get('textLength')).textLength] || lengthMap.short;
-    console.log((await chrome.storage.sync.get('textLength')), length);
-    const prompt =
-      request.action === 'summarize'
-        ? `${request.text} \n summarize the following text to ${length} words, give it a title in () and the original language in []`
-        : `${document.URL} \n summarize this webpage to ${length} words,  give it a title in () and the original language in []`
-    displayLoading();
-    let summary = await generateSummary(apiKey, prompt);
-    let [updatedSummary, originalLang] = getLanguage(summary);
-    let topic = '';
-    console.log(updatedSummary, originalLang , targetLanguage);
-    if (targetLanguage && originalLang.toLowerCase() !== targetLanguage) {
-      const translationPrompt = `${updatedSummary} \n translate it to ${targetLanguage} including the text in ()`;
-      updatedSummary = await generateSummary(apiKey, translationPrompt);
-    }
-    [updatedSummary, topic] = parseText(updatedSummary);
-
-    // sessionStorage.setItem('summaryTopic', topic);
-    // console.log(topic, sessionStorage.getItem('summaryTopic'))
-    chrome.runtime.sendMessage({action: "updateTags", data: topic});
-    displaySummary(updatedSummary, topic);
+    chrome.storage.local.get(TARGET_LANGUAGE).then((res) => {
+      const targetLanguage = res[TARGET_LANGUAGE];
+      chrome.storage.local.get('textLength').then((res2) => {
+        const length = lengthMap[res2.textLength] || lengthMap.short;
+        const prompt =
+          request.action === 'summarize'
+            ? `${request.text} \n summarize the following text to ${length} words, give it a title in () and the original language in []`
+            : `${document.URL} \n summarize this webpage to ${length} words,  give it a title in () and the original language in []`;
+        displayLoading();
+        generateSummary(apiKey, prompt).then((summary) => {
+          let [updatedSummary, originalLang] = getLanguage(summary);
+          let topic = '';
+          if (targetLanguage && originalLang.toLowerCase() !== targetLanguage) {
+            const translationPrompt = `${updatedSummary} \n translate it to ${targetLanguage} including the text in ()`;
+            generateSummary(apiKey, translationPrompt).then((updatedSummary) => {
+              updatedSummary = updatedSummary;
+            });
+          }
+          [updatedSummary, topic] = parseText(updatedSummary);
+          chrome.runtime.sendMessage({ action: "updateTags", data: topic });
+          displaySummary(updatedSummary, topic);
+          sendResponse(updatedSummary);
+        });
+      });
+    });
+    return true;
   } else if (request.action === 'getSummary') {
     const summaryDiv = document.getElementById('summaryDiv');
     if (summaryDiv) {
@@ -36,6 +41,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     } else {
       sendResponse(null);
     }
+  } else if (request.action === 'getSummaryTopic') {
+    sendResponse({ value: document.getElementsByClassName('summary-topic')[0]?.innerHTML });
   }
   // else if (request.action === 'summarizeWebpage') {
   //   const webpageText = document.body.innerText;
@@ -44,6 +51,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   //   const summary = await generateSummary(apiKey, prompt);
   //   displaySummary(summary);
   // }
+  console.log('RETURN');
   return true; // Required for async sendResponse
 });
 
@@ -64,11 +72,12 @@ function displayLoading() {
   let summaryDiv = document.getElementById('summaryDiv');
   if (summaryDiv) {
     summaryDiv.innerHTML = '';
+    summaryDiv.classList.add('loading');
     addLoadingSpinner(summaryDiv);
   } else {
     const summaryDiv = document.createElement('div');
     summaryDiv.setAttribute('id', 'summaryDiv');
-    summaryDiv.classList.add('summary-container-SE');
+    summaryDiv.classList.add('summary-container-SE', 'loading');
     addLoadingSpinner(summaryDiv);
     dragElement(summaryDiv);
     document.body.appendChild(summaryDiv);
@@ -95,7 +104,7 @@ function displaySummary(summary, topic) {
   // summaryDiv.classList.add('summary-container-SE');
 
   const closeButton = document.createElement('button');
-  closeButton.textContent = '✖';
+  closeButton.textContent = '+';
   closeButton.classList.add('close-button-SE');
   closeButton.onclick = () => summaryDiv.remove();
 
@@ -119,6 +128,7 @@ function displaySummary(summary, topic) {
   summaryContent.textContent = summary;
 
   summaryDiv.innerHTML = '';
+  summaryDiv.classList.remove('loading');
   summaryDiv.appendChild(closeButton);
   summaryDiv.appendChild(copyButton);
   summaryDiv.appendChild(summaryTopic);

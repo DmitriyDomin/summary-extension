@@ -4,6 +4,7 @@ html {
     --white-300: #f0efed;
     --white-100: #FFFFFF;
     --green-400: #08dfb2;
+    --green-100: rgba(8, 223, 178, 0.2);
     --yellow-600: #eeb819;
     --red-500: #a2474d;
     --blue-700: #1074a1;
@@ -13,19 +14,22 @@ html {
     --sub-text: var(--black-400);
     --text-constrast: var(--white-100);
     --background: var(--white-100);
-    ---additionalbackground: var(--white-300);
+    --additionalbackground: var(--white-300);
     --sub-background: var(--green-400);
     --border-color: var(--black-800);
     --button-background-one: var(--blue-800);
     --button-background-two: var(--red-500);
     --button-background-three: var(--blue-700);
+    --hover-menu-backgroung: var(--green-100);
+    --error-color: var(--red-500);
+    min-height: 100%;
+    box-shadow: 5px 4px 7px var(--shadow);
 }
 
 body {
     font-family: Arial, sans-serif;
     margin: 0;
     width: 550px;
-    box-shadow: 5px 4px 7px var(--shadow);
     color: var(--main-text);
     padding: 25px 50px 25px 25px;
     position: relative;
@@ -84,7 +88,7 @@ h1 {
 /*}*/
 
 .target-language {
-    --select-background: var(---additionalbackground);
+    --select-background: var(--additionalbackground);
     width: 60%;
 }
 
@@ -95,7 +99,7 @@ h1 {
 }
 
 .summary-length {
-    --select-background: var(---additionalbackground);
+    --select-background: var(--additionalbackground);
     width: 60%;
 }
 
@@ -108,7 +112,7 @@ h1 {
 .save-content-tags {
     display: flex;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 20px;
 }
 
 .save-content-container {
@@ -123,10 +127,93 @@ h1 {
     border: 1px solid var(--black-800);
 }
 
+.save-button-container {
+    display: flex;
+    align-items: center;
+}
+
+.save-button-container .save-content__icon {
+    font-size: 32px;
+    color: var(--sub-background);
+    display: none;
+}
+
+.save-button-container .save-content__icon.active {
+    display: inline-block;
+}
+
+.save-content__error {
+    font-size: 16px;
+    color: var(--error-color);
+    display: none;
+}
+
+.save-content__error.show {
+    display: block;
+}
+
 .save-content-button {
     background: var(--sub-background);
     color: var(--main-text);
+    position: relative;
+    margin-right: 10px;
 }
+
+.save-content-button[disabled] {
+    cursor: initial;
+}
+
+.save-content-button[disabled]:hover {
+    filter: none;
+}
+
+.save-content-button:before {
+    content: '';
+    background: linear-gradient(45deg, var(--blue-700), var(--green-400), var(--red-500), var(--yellow-600), var(--blue-800));
+    position: absolute;
+    top: -2px;
+    left:-2px;
+    background-size: 400%;
+    z-index: -1;
+    filter: blur(5px);
+    width: calc(100% + 5px);
+    height: calc(100% + 5px);
+    animation: glowing 8s linear infinite;
+    opacity: 0;
+    transition: opacity .2s ease-in-out;
+    border-radius: 10px;
+}
+
+.save-content-button:active {
+    color: #000;
+}
+
+.save-content-button:active:after {
+    background: transparent;
+}
+
+.save-content-button.active:before {
+    opacity: 1;
+}
+
+.save-content-button:after {
+    z-index: -1;
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: var(--sub-background);
+    left: 0;
+    top: 0;
+    border-radius: 5px;
+}
+
+@keyframes glowing {
+    0% { background-position: 0 0; }
+    50% { background-position: 400% 0; }
+    100% { background-position: 0 0; }
+}
+
 
 .button-twitter {
     background: var(--button-background-three);
@@ -200,8 +287,32 @@ h1 {
     background-image: url(images/flags/ua.svg);
 }
 
-.instant-summary__button:hover {
+.instant-summary__button:not([disabled]):hover {
     filter: brightness(80%);
+    cursor: pointer;
+}
+
+.instant-summary__button i {
+    transform: rotate(90deg);
+}
+
+.instant-summary__button.clicked {
+    animation-name: rotateButton;
+    animation-duration: 0.7s;
+    animation-iteration-count: 1
+}
+
+@keyframes rotateButton {
+    from{
+        transform: rotate(0deg);
+    }
+    to{
+        transform: rotate(360deg);
+    }
+}
+
+.instant-summary-container {
+    margin-bottom: 20px;
 }
 
 .instant-summary-toggle {
@@ -261,6 +372,7 @@ h1 {
     font-family: Arial;
     font-size: 16px;
     border-color: #a39f9d;
+    animation-fill-mode: forwards;
 }
 
 .instant-summary__button {
@@ -271,15 +383,15 @@ h1 {
     border-radius: 50%;
     border: none;
     background: #08dfb2;
-    cursor: pointer;
     animation-name: createButton;
     animation-duration: 0.5s;
+    animation-fill-mode: forwards;
 }
 
 
 @keyframes createBox {
     from{
-        height:0;
+        height: 0;
     }
     to{
         height: 200px;
@@ -289,9 +401,11 @@ h1 {
 @keyframes removeBox {
     from{
         height: 200px;
+        padding: 2px;
     }
     to{
-        height:0;
+        height: 0;
+        padding: 0;
     }
 }
 
@@ -324,5 +438,122 @@ h1 {
 }
 
 .instant-summary__textarea:focus {
+    outline: none;
+}
+
+.menu {
+    display: flex;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.menu__home {
+    border-right: 2px solid black;
+}
+
+.menu .active {
+    background: var(--background);
+}
+
+.menu__item {
+    background: var(--additionalbackground);
+    padding: 14px;
+    font-size: 20px;
+    width: 50%;
+    text-align: center;
+}
+
+.menu__item:not(.active):hover {
+    cursor: pointer;
+    background: var(--hover-menu-backgroung);
+}
+
+.page {
+    display: none;
+}
+
+.active-page {
+    display: block;
+}
+
+.summary {
+    padding: 10px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch;
+}
+
+.summary__text {
+    font-size: 16px;
+}
+
+.summary__content {
+    width: 85%;
+}
+
+.summary__tags {
+    font-size: 28px;
+    margin: 0 0 10px 0;
+}
+
+.summary__buttons {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-direction: column;
+}
+
+.summary__buttons button {
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.summary__buttons button:hover {
+    filter: brightness(80%);
+}
+
+.summary__delete i {
+    color: var(--button-background-two);
+}
+
+.summary__copy i {
+    color: var(--sub-background);
+}
+
+.summary__twitter i {
+    color: var(--button-background-three);
+}
+
+.summary__email i {
+    color: var(--button-background-one);
+}
+
+.search {
+    position: relative;
+}
+
+.search__input {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    border: 2px solid var(--border-color);
+    background: transparent;
+}
+
+.search__icon {
+    font-size: 20px;
+    position: absolute;
+    top: 12px;
+    z-index: -1;
+    right: 0;
+}
+
+.search__input:focus {
     outline: none;
 }

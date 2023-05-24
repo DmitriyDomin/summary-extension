@@ -31,8 +31,11 @@ addEventListener("load", (event) => {
 const USER_LANGUAGE = 'userLanguage';
 const TARGET_LANGUAGE = 'targetLanguage';
 
-
-document.getElementById('saveButton').addEventListener('click', async () => {
+const saveButton = document.getElementById('saveButton');
+saveButton.addEventListener('click', async () => {
+  if (saveButton.disabled) return;
+  document.getElementById('loadingContentIcon').classList.add('active');
+  saveButton.disabled = true;
   const activeTab = await new Promise((resolve) =>
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
   );
@@ -42,45 +45,102 @@ document.getElementById('saveButton').addEventListener('click', async () => {
 
   if (summary) {
     const savedSummary = { summary, tags, timestamp: new Date().toISOString() };
-
+    console.log(savedSummary);
     chrome.storage.local.get('savedSummaries', (data) => {
       const savedSummaries = data.savedSummaries || [];
+      if (savedSummaries.some(summary => summary.tags.sort().toString() === tags.sort().toString())) {
+        console.log(tags.sort().toString());
+        document.getElementById('saveButtonError').classList.add('show');
+        document.getElementById('loadingContentIcon').classList.remove('active');
+        return;
+      }
       savedSummaries.push(savedSummary);
       chrome.storage.local.set({ savedSummaries }, () => {
-        displaySavedSummaries();
+        document.getElementById('loadingContentIcon').classList.remove('active');
+        document.getElementById('savedContentIcon').classList.add('active');
+        setTimeout(() => {
+          document.getElementById('savedContentIcon').classList.remove('active');
+        }, 2000);
       });
     });
   }
 });
 
 // Function to display saved summaries
-function displaySavedSummaries() {
-  chrome.storage.local.get('savedSummaries', (data) => {
-    const savedSummaries = data.savedSummaries || [];
-    const savedSummariesContainer = document.getElementById('savedSummaries');
-    savedSummariesContainer.innerHTML = '';
+function displaySavedSummaries(savedSummaries) {
+  const savedSummariesContainer = document.getElementById('savedSummaries');
+  savedSummariesContainer.innerHTML = '';
 
-    savedSummaries.forEach((savedSummary, index) => {
-      const summaryElement = document.createElement('div');
-      summaryElement.classList.add('saved-summary');
-      summaryElement.innerHTML = `
-        <div class="summary-text">${savedSummary.summary}</div>
-        <div class="summary-tags">${savedSummary.tags.join(', ')}</div>
-        <button class="delete-button" data-index="${index}">Delete</button>
+  savedSummaries.forEach((savedSummary, index) => {
+    const summaryElement = document.createElement('div');
+    summaryElement.classList.add('summary');
+    summaryElement.innerHTML = `
+        <div class="summary__content">
+          <h3 class="summary__tags">${savedSummary.tags.join(', ')}</h3>
+          <div class="summary__text">${savedSummary.summary}</div>
+        </div>
+        <div class="summary__buttons">
+          <button class="summary__delete" data-index="${index}">
+            <span><i class="fas fa-trash"></i></span>
+          </button>
+          <button class="summary__copy" data-index="${index}"
+            <span><i class="fas fa-copy"></i></span>
+          </button>
+          <button class="summary__twitter" data-index="${index}"
+            <span><i class="fab fa-twitter"></i></span>
+          </button>
+          <button class="summary__email" data-index="${index}"
+            <span><i class="fas fa-envelope"></i></i></span>
+          </button>
+        </div>
       `;
-      savedSummariesContainer.appendChild(summaryElement);
-    });
+    savedSummariesContainer.appendChild(summaryElement);
+  });
 
-    // Add event listeners for delete buttons
-    document.querySelectorAll('.delete-button').forEach((button) => {
-      button.addEventListener('click', (event) => {
-        const index = event.target.getAttribute('data-index');
-        savedSummaries.splice(index, 1);
-        chrome.storage.local.set({ savedSummaries }, () => {
-          displaySavedSummaries();
-        });
+  // Add event listeners for delete buttons
+  document.querySelectorAll('.summary__delete').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      const index = button.getAttribute('data-index');
+      savedSummaries.splice(index, 1);
+      chrome.storage.local.set({ savedSummaries }, async () => {
+        const savedSummaries = (await chrome.storage.local.get('savedSummaries')).savedSummaries || [];
+        displaySavedSummaries(savedSummaries);
       });
     });
+  });
+
+  document.querySelectorAll('.summary__copy').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      const index = button.getAttribute('data-index');
+      const summary = savedSummaries[index].summary;
+      if (summary) {
+        navigator.clipboard.writeText(summaryText)
+      }
+    });
+  });
+
+  document.querySelectorAll('.summary__twitter').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      const index = button.getAttribute('data-index');
+      const summary = savedSummaries[index].summary;
+      if (summary) {
+        shareOnTwitter(summary);
+      }
+    });
+  });
+
+  document.querySelectorAll('.summary__email').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      const index = button.getAttribute('data-index');
+      const summary = savedSummaries[index].summary;
+      if (summary) {
+        shareViaEmail(summary);
+      }
+    });
+  });
+  chrome.storage.local.get('savedSummaries', (data) => {
+    const savedSummaries = data.savedSummaries || [];
+
   });
 }
 
@@ -127,7 +187,6 @@ document.getElementById('shareTwitter').addEventListener('click', async () => {
   }
 });
 
-
 document.getElementById('summaryLength').addEventListener('change', () => {
   const summaryLength = document.getElementById('summaryLength').value;
   chrome.storage.local.set({ textLength: summaryLength });
@@ -157,25 +216,55 @@ document.getElementById('summaryLength').addEventListener('change', () => {
 //     });
 //   });
 // });
-
-document.getElementById('summarizeWebpageButton').addEventListener('click', async () => {
+const summarizeWebpageButton = document.getElementById('summarizeWebpageButton');
+summarizeWebpageButton.addEventListener('click', async () => {
+  if (summarizeWebpageButton.disabled) return;
+  summarizeWebpageButton.disabled = true;
   const activeTab = await new Promise((resolve) =>
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
   );
 
   chrome.tabs.sendMessage(activeTab.id, { action: 'summarizeWebpage' }, (summary) => {
-    document.getElementById('summaryContainer').textContent = summary;
+    summarizeWebpageButton.disabled = false;
   });
 });
 
-document.getElementById('instantSummaryButton').addEventListener('click', async () => {
+document.getElementById('instantSummaryTextarea').addEventListener('input', (event) => {
+    document.getElementById('instantSummaryButton').disabled = !event.target.value;
+  });
+
+const instantSummaryButton = document.getElementById('instantSummaryButton');
+instantSummaryButton.addEventListener('click', async () => {
   const text = document.getElementById('instantSummaryTextarea').value;
+  if (!text || instantSummaryButton.classList.contains('clicked')) return;
+  instantSummaryButton.classList.add('clicked');
   const activeTab = await new Promise((resolve) =>
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
   );
   chrome.tabs.sendMessage(activeTab.id, { action: 'summarize', text }, (summary) => {
-    //document.getElementById('summaryContainer').textContent = summary;
+    console.log(summary, 'summary');
+    instantSummaryButton.classList.remove('clicked');
   });
+});
+
+let summaryInputTimeout;
+document.getElementById('summaryInput').addEventListener('input', async (event) => {
+  clearTimeout(summaryInputTimeout);
+  summaryInputTimeout = setTimeout(async () => {
+    const savedSummaries = (await chrome.storage.local.get('savedSummaries')).savedSummaries || [];
+    const summariesToShow = savedSummaries.filter((summary) => {
+      console.log(event, summary.tags, summary.summary);
+      return summary.tags
+        .some(tag => tag.toLowerCase().includes(event.target.value.toLowerCase()))
+        || summary.summary.toLowerCase().includes(event.target.value.toLowerCase());
+    });
+    displaySavedSummaries(summariesToShow);
+  }, 200);
+});
+
+document.getElementById('tags').addEventListener('input', async (event) => {
+  document.getElementById('saveButtonError').classList.remove('show');
+  document.getElementById('saveButton').disabled = false;
 });
 
 document.getElementById('instantSummaryToggle').addEventListener('click',  (event) => {
@@ -186,14 +275,40 @@ document.getElementById('instantSummaryToggle').addEventListener('click',  (even
       event.target.classList.remove('closing');
       event.target.disabled = true;
       event.target.classList.add('closed');
-    }, 490);
+    }, 500);
   } else {
     event.target.classList.toggle('opened');
     event.target.classList.toggle('closed');
   }
-
 });
 
+function prepareMenuItems() {
+  const menuItems = [...document.getElementsByClassName('menu__item')];
+  menuItems.forEach((menuItem) => {
+    menuItem.addEventListener('click', (event) => {
+      if (event.target.classList.contains('active')) return;
+      setActivePage(event.target, menuItems);
+    });
+  });
+}
+
+async function setActivePage(targetPage, menuItems) {
+  menuItems.forEach((menuItem) => {
+    menuItem.classList.remove('active');
+  });
+  const homePage = document.getElementById('homePage');
+  const summariesPage = document.getElementById('summariesPage');
+  if (targetPage.id === 'menuHome') {
+    homePage.classList.add('active-page');
+    summariesPage.classList.remove('active-page');
+  } else if (targetPage.id === 'menuSummaries') {
+    const savedSummaries = (await chrome.storage.local.get('savedSummaries')).savedSummaries || [];
+    displaySavedSummaries(savedSummaries);
+    summariesPage.classList.add('active-page');
+    homePage.classList.remove('active-page');
+  }
+    targetPage.classList.add('active');
+}
 
 function setLocalizedTextContent(elementId, messageName) {
   const element = document.getElementById(elementId);
@@ -265,18 +380,40 @@ async function updateUIWithLanguage(language = 'en') {
 
 }
 
+function enableSaveButton() {
+  const saveButton = document.getElementById("saveButton");
+  saveButton.disabled = false;
+  saveButton.classList.add('active');
+  setTimeout(() => {
+    saveButton.classList.remove('active');
+  }, 1400);
+}
+
 async function onPopupAdded() {
-  displaySavedSummaries();
+  //displaySavedSummaries();
+  prepareMenuItems();
   const userLanguage = (await chrome.storage.local.get(USER_LANGUAGE))[USER_LANGUAGE];
   const targetLanguage = (await chrome.storage.local.get(TARGET_LANGUAGE))[TARGET_LANGUAGE];
   const { textLength } = (await chrome.storage.local.get('textLength'));
   console.log(textLength, (await chrome.storage.local.get('textLength')));
   console.log(userLanguage, document.getElementById(USER_LANGUAGE).value);
   await updateUIWithLanguage(userLanguage);
-  chrome.runtime.sendMessage({ action: 'getSummaryTopic', key: 'summaryTopic' }, response => {
-    console.log('response', response.value);
-    if (response.value) {
+  const activeTab = await new Promise((resolve) =>
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+  );
+  chrome.tabs.sendMessage(activeTab.id, { action: 'getSummaryTopic', key: 'summaryTopic' }, response => {
+    if (response?.value) {
       document.getElementById("tags").value = response.value;
+      document.getElementById('saveButtonError').classList.remove('show');
+      enableSaveButton();
+    }
+  });
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log(request);
+    if (request.action === "updatePopup" && request.data) {
+      document.getElementById("tags").value = request.data;
+      document.getElementById('saveButtonError').classList.remove('show');
+      enableSaveButton();
     }
   });
   if (userLanguage) {
@@ -289,6 +426,7 @@ async function onPopupAdded() {
   if (textLength) {
     document.getElementById('summaryLength').value = textLength;
   }
+  loadSummaries();
   document.dispatchEvent(new CustomEvent('popupLoaded'));
 }
 
@@ -329,3 +467,8 @@ async function onPopupAdded() {
 //     }
 //   }
 // });
+
+async function loadSummaries() {
+  const summaries = await chrome.storage.local.get('savedSummaries');
+  console.log(summaries);
+}

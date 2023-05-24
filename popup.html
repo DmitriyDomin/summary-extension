@@ -3,6 +3,7 @@
 <head>
     <link rel="stylesheet" href="custom-select.css">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Summary Extension</title>
@@ -23,57 +24,73 @@
         </select>
     </div>
 </div>
-<div class="target-language-container">
-    <label for="targetLanguage" data-i18n="targetLanguage" class="target-language-label">Translate to</label>
-    <div class="custom-select target-language">
-        <select id="targetLanguage" >
-            <option value="none" id="noTranslation" data-i18n="noTranslation">No translation</option>
-            <option value="english" data-i18n="english" >English</option>
-            <option value="spanish" data-i18n="spanish">Spanish</option>
-            <option value="german" data-i18n="german">German</option>
-            <option value="french" data-i18n="french">French</option>
-            <option value="italian" data-i18n="italian">Italian</option>
-            <option value="portuguese" data-i18n="portuguese">Portuguese</option>
-            <option value="russian" data-i18n="russian">Russian</option>
-            <option value="ukrainian" data-i18n="ukrainian">Ukrainian</option>
-        </select>
+<div class="menu">
+    <div class="menu__home menu__item active" id="menuHome">Home</div>
+    <div class="menu__summaries menu__item" id="menuSummaries">Saved summaries</div>
+</div>
+<div class="home-page page active-page" id="homePage">
+    <div class="target-language-container">
+        <label for="targetLanguage" data-i18n="targetLanguage" class="target-language-label">Translate to</label>
+        <div class="custom-select target-language">
+            <select id="targetLanguage" >
+                <option value="none" id="noTranslation" data-i18n="noTranslation">No translation</option>
+                <option value="english" data-i18n="english" >English</option>
+                <option value="spanish" data-i18n="spanish">Spanish</option>
+                <option value="german" data-i18n="german">German</option>
+                <option value="french" data-i18n="french">French</option>
+                <option value="italian" data-i18n="italian">Italian</option>
+                <option value="portuguese" data-i18n="portuguese">Portuguese</option>
+                <option value="russian" data-i18n="russian">Russian</option>
+                <option value="ukrainian" data-i18n="ukrainian">Ukrainian</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="summary-length-container">
+        <label for="summaryLength" id="summaryLengthLabel" data-i18n="summaryLengthLabel">Summary Length:</label>
+        <div class="custom-select summary-length">
+            <select id="summaryLength">
+                <option value="short" id="shortText" data-i18n="shortText">Short</option>
+                <option value="medium" id="mediumText" data-i18n="mediumText">Medium</option>
+                <option value="long" id="longText" data-i18n="longText">Long</option>
+            </select>
+        </div>
+    </div>
+
+    <button id="summarizeWebpageButton" data-i18n="summarizeWebpageButton" class="summarize-webpage button"></button>
+
+    <div class="instant-summary-container">
+        <div class="instant-summary-toggle closed" id="instantSummaryToggle">Insert text to summarize</div>
+        <div class="instant-summary">
+            <textarea name="instantSummaryTextarea" class="instant-summary__textarea" id="instantSummaryTextarea"></textarea>
+            <button class="instant-summary__button" id="instantSummaryButton" disabled>
+                <i class="fas fa-redo"></i>
+            </button>
+        </div>
+    </div>
+    <div class="save-content-container">
+        <div class="save-content-tags">
+            <label for="tags" id="tagsLabel" data-i18n="tagsLabel">Tags:</label>
+            <input type="text" id="tags" data-i18n="tags" placeholder="Enter tags separated by commas" class="save-content-input">
+        </div>
+        <div class="save-button-container">
+            <button id="saveButton" data-i18n="saveButton" class="save-content-button button">Save Summary</button>
+            <i class="far fa-check-circle save-content__icon" id="savedContentIcon"></i>
+            <i class="fas fa-spinner save-content__icon" id="loadingContentIcon"></i>
+            <p id="saveButtonError" class="save-content__error">Summary with these tags already exists</p>
+        </div>
+    </div>
+    <div class="share-container">
+        <button id="shareEmail" data-i18n="shareEmail"  class="button-email button">Share via Email</button>
+        <button id="shareTwitter" data-i18n="shareTwitter" class="button-twitter button">Share on Twitter</button>
     </div>
 </div>
-
-<div class="summary-length-container">
-    <label for="summaryLength" id="summaryLengthLabel" data-i18n="summaryLengthLabel">Summary Length:</label>
-    <div class="custom-select summary-length">
-        <select id="summaryLength">
-            <option value="short" id="shortText" data-i18n="shortText">Short</option>
-            <option value="medium" id="mediumText" data-i18n="mediumText">Medium</option>
-            <option value="long" id="longText" data-i18n="longText">Long</option>
-        </select>
+<div class="summaries-page page" id="summariesPage">
+    <div class="search">
+        <input type="text" class="search__input" id='summaryInput' placeholder="Enter the text">
+        <i id="savedButtonIcon" class="fas fa-search search__icon"></i>
     </div>
-</div>
-
-<button id="summarizeWebpageButton" data-i18n="summarizeWebpageButton" class="summarize-webpage button"></button>
-
-<div class="instant-summary-container">
-    <div class="instant-summary-toggle closed" id="instantSummaryToggle">Insert text to summarize</div>
-    <div class="instant-summary">
-        <textarea name="instantSummaryTextarea" class="instant-summary__textarea" id="instantSummaryTextarea"></textarea>
-        <button class="instant-summary__button" id="instantSummaryButton">&#8594</button>
-    </div>
-</div>
-
-
-<div id="summary"></div>
-<div class="save-content-container">
-    <div class="save-content-tags">
-        <label for="tags" id="tagsLabel" data-i18n="tagsLabel">Tags:</label>
-        <input type="text" id="tags" data-i18n="tags" placeholder="Enter tags separated by commas" class="save-content-input">
-    </div>
-    <button id="saveButton" data-i18n="saveButton" class="save-content-button button">Save Summary</button>
-</div>
-<div id="savedSummaries"></div>
-<div class="share-container">
-    <button id="shareEmail" data-i18n="shareEmail"  class="button-email button">Share via Email</button>
-    <button id="shareTwitter" data-i18n="shareTwitter" class="button-twitter button">Share on Twitter</button>
+    <div id="savedSummaries"></div>
 </div>
 <script src="load-scripts.js"></script>
 </body>

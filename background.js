@@ -24,8 +24,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } catch (e) {
       console.log(e);
     }
-  } else if (request.action === "getSummaryTopic") {
-    console.log('getSummaryTopic', temporaryData, request.key);
-    sendResponse({ value: temporaryData[request.key] });
   }
+  // else if (request.action === "getSummaryTopic") {
+  //   console.log('getSummaryTopic', temporaryData, request.key);
+  //   sendResponse({ value: temporaryData[request.key] });
+  // }
 });
