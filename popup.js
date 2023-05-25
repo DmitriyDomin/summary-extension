@@ -15,9 +15,33 @@
 //   return true; // Required for async sendResponse
 // });
 //
-addEventListener("load", (event) => {
+import ExtPay from "extpay";
 
-});
+const sevenDays = 1000*60*60*24*7 // in milliseconds
+var extpay = ExtPay('summary-extension'); // Careful! See note below
+
+async function checkPaymentStatus() {
+  const now = new Date();
+  const user = await extpay.getUser();
+  console.log(user);
+  if (!user.paid && !user.trialStartedAt) {
+    console.log('openTrialPage');
+    await extpay.openTrialPage();
+  } else if (user.trialStartedAt && (now - user.trialStartedAt) > sevenDays && !user.paid) {
+    await extpay.openPaymentPage();
+  } else {
+    return true;
+  }
+  return false;
+}
+
+// async function checkPaymentStatus() {
+//   const user = await extpay.getUser();
+//   if (!user.paid && !user.trialStartedAt) {
+//     console.log('openTrialPage');
+//     extpay.openTrialPage();
+//   }
+// }
 
 // document.getElementById('summarizeButton').addEventListener('click', () => {
 //   const summaryLength = document.getElementById('summaryLength').value;
@@ -33,6 +57,7 @@ const TARGET_LANGUAGE = 'targetLanguage';
 
 const saveButton = document.getElementById('saveButton');
 saveButton.addEventListener('click', async () => {
+  if(!(await checkPaymentStatus())) return;
   if (saveButton.disabled) return;
   document.getElementById('loadingContentIcon').classList.add('active');
   saveButton.disabled = true;
@@ -67,7 +92,8 @@ saveButton.addEventListener('click', async () => {
 });
 
 // Function to display saved summaries
-function displaySavedSummaries(savedSummaries) {
+async function displaySavedSummaries(savedSummaries) {
+  if(!(await checkPaymentStatus())) return;
   const savedSummariesContainer = document.getElementById('savedSummaries');
   savedSummariesContainer.innerHTML = '';
 
@@ -168,6 +194,7 @@ function shareOnTwitter(summary) {
 }
 
 document.getElementById('shareEmail').addEventListener('click', async () => {
+  if(!(await checkPaymentStatus())) return;
   const activeTab = await new Promise((resolve) =>
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
   );
@@ -178,6 +205,7 @@ document.getElementById('shareEmail').addEventListener('click', async () => {
 });
 
 document.getElementById('shareTwitter').addEventListener('click', async () => {
+  if(!(await checkPaymentStatus())) return;
   const activeTab = await new Promise((resolve) =>
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
   );
@@ -218,6 +246,7 @@ document.getElementById('summaryLength').addEventListener('change', () => {
 // });
 const summarizeWebpageButton = document.getElementById('summarizeWebpageButton');
 summarizeWebpageButton.addEventListener('click', async () => {
+  if(!(await checkPaymentStatus())) return;
   if (summarizeWebpageButton.disabled) return;
   summarizeWebpageButton.disabled = true;
   const activeTab = await new Promise((resolve) =>
@@ -235,6 +264,7 @@ document.getElementById('instantSummaryTextarea').addEventListener('input', (eve
 
 const instantSummaryButton = document.getElementById('instantSummaryButton');
 instantSummaryButton.addEventListener('click', async () => {
+  if(!(await checkPaymentStatus())) return;
   const text = document.getElementById('instantSummaryTextarea').value;
   if (!text || instantSummaryButton.classList.contains('clicked')) return;
   instantSummaryButton.classList.add('clicked');
@@ -392,6 +422,7 @@ function enableSaveButton() {
 async function onPopupAdded() {
   //displaySavedSummaries();
   prepareMenuItems();
+  await checkPaymentStatus();
   const userLanguage = (await chrome.storage.local.get(USER_LANGUAGE))[USER_LANGUAGE];
   const targetLanguage = (await chrome.storage.local.get(TARGET_LANGUAGE))[TARGET_LANGUAGE];
   const { textLength } = (await chrome.storage.local.get('textLength'));

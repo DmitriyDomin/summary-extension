@@ -1,5 +1,9 @@
-console.log(1234567);
 let temporaryData = {};
+import ExtPay from 'extpay';
+
+//import('ExtPay.js') // or `import` / `require` if using a bundler
+var extpay = ExtPay('summary-extension'); // Careful! See note below
+extpay.startBackground();
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({

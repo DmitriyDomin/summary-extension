@@ -74,7 +74,7 @@
             <input type="text" id="tags" data-i18n="tags" placeholder="Enter tags separated by commas" class="save-content-input">
         </div>
         <div class="save-button-container">
-            <button id="saveButton" data-i18n="saveButton" class="save-content-button button">Save Summary</button>
+            <button id="saveButton" data-i18n="saveButton" class="save-content-button button" disabled>Save Summary</button>
             <i class="far fa-check-circle save-content__icon" id="savedContentIcon"></i>
             <i class="fas fa-spinner save-content__icon" id="loadingContentIcon"></i>
             <p id="saveButtonError" class="save-content__error">Summary with these tags already exists</p>
@@ -93,5 +93,7 @@
     <div id="savedSummaries"></div>
 </div>
 <script src="load-scripts.js"></script>
+<!--<script src="node_modules/extpay/ExtPay.dev.js"></script>-->
+
 </body>
 </html>

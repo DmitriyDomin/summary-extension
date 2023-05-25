@@ -14,7 +14,7 @@ document.addEventListener('popupLoaded', async () => {
 });
 (async () => {
   try {
-    await loadScript('popup.js');
+    await loadScript('./dist/popup.js');
     console.log('Script 1 loaded and executed.');
 
     // await loadScript('custom-select.js');
