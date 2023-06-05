@@ -15,13 +15,13 @@
     "message": "Longitud del resumen:"
   },
   "shortText": {
-    "message": "Corto (50-70 palabras)"
+    "message": "Corto (<100 palabras)"
   },
   "mediumText": {
-    "message": "Medio (100-125 palabras)"
+    "message": "Medio (150-250 palabras)"
   },
   "longText": {
-    "message": "Largo (150-180 palabras)"
+    "message": "Largo (250-350 palabras)"
   },
   "tags": {
     "message": "Introduzca etiquetas separadas por comas"
@@ -67,5 +67,47 @@
   },
   "copy": {
     "message": "Copiar"
+  },
+  "saveButtonError": {
+    "message": "Ya existe un resumen con estas etiquetas"
+  },
+  "summaryInput": {
+    "message": "Ingrese el texto"
+  },
+  "profileSubscription": {
+    "message": "Administrar la suscripción"
+  },
+  "freeTrialWordsLeft": {
+    "message": "El número de palabras restantes hasta el final del periodo de prueba gratuito: "
+  },
+  "activeUntil": {
+    "message": "Activo hasta: "
+  },
+  "trialLimitExceeded": {
+    "message": "Has alcanzado el límite de palabras para el periodo de prueba. Por favor, actualice a nuestra versión de pago para continuar usando Summary Master sin limitaciones."
+  },
+  "gptLimitExceeded": {
+    "message": "Error de GPT: La longitud máxima del contexto es de 4097 tokens. Sin embargo, tus mensajes resultaron en 10410 tokens. Por favor, reduce la longitud de los mensajes."
+  },
+  "textLimitExceeded": {
+    "message": "El límite de palabras en una solicitud es 2000, por favor, elimina las palabras extra, tu número de palabras: "
+  },
+  "gptError": {
+    "message": "Error de GPT: intenta de nuevo más tarde, intenta cambiar tu entrada "
+  },
+  "instantSummaryToggle": {
+    "message": "Insertar texto para resumir"
+  },
+  "menuHome": {
+    "message": "Inicio"
+  },
+  "menuSummaries": {
+    "message": "Resúmenes guardados"
+  },
+  "menuProfile": {
+    "message": "Perfil"
+  },
+  "userEmailText": {
+    "message": "Correo electrónico del usuario: "
   }
 }

@@ -1,0 +1,28 @@
+{
+  "name": "summary-extension",
+  "version": "1.0.0",
+  "description": "",
+  "main": "custom-select/add-select-handlers.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DmitriyDomin/summary-extension.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/DmitriyDomin/summary-extension/issues"
+  },
+  "homepage": "https://github.com/DmitriyDomin/summary-extension#readme",
+  "dependencies": {
+    "babel-install": "^2.1.0",
+    "babel-loader": "^9.1.2",
+    "extpay": "^3.0.7",
+    "firebase": "^9.22.0"
+  },
+  "devDependencies": {
+    "webpack-cli": "^5.1.1"
+  }
+}

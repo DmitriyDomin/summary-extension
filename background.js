@@ -1,9 +1,9 @@
+import {checkPaymentStatus} from "./api/extpay";
+import { updateWordCount } from "./api/firebase";
+
 let temporaryData = {};
-import ExtPay from 'extpay';
 
 //import('ExtPay.js') // or `import` / `require` if using a bundler
-var extpay = ExtPay('summary-extension'); // Careful! See note below
-extpay.startBackground();
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -13,8 +13,9 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'summarize') {
+    if(!(await checkPaymentStatus(info.selectionText))) return;
     chrome.tabs.sendMessage(tab.id, { action: 'summarize', text: info.selectionText });
   }
 });

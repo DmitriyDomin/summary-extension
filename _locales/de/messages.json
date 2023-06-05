@@ -15,13 +15,13 @@
     "message": "Länge der Zusammenfassung:"
   },
   "shortText": {
-    "message": "Kurz (50-70 Wörter)"
+    "message": "Kurz (<100 Wörter)"
   },
   "mediumText": {
-    "message": "Mittel (100-125 Wörter)"
+    "message": "Mittel (150-200 Wörter)"
   },
   "longText": {
-    "message": "Lang (150-180 Wörter)"
+    "message": "Lang (250-300 Wörter)"
   },
   "tags": {
     "message": "Geben Sie Tags durch Kommas getrennt ein"
@@ -67,5 +67,47 @@
   },
   "copy": {
     "message": "Kopieren"
+  },
+  "saveButtonError": {
+    "message": "Zusammenfassung mit diesen Tags existiert bereits"
+  },
+  "summaryInput": {
+    "message": "Geben Sie den Text ein"
+  },
+  "profileSubscription": {
+    "message": "Abonnement verwalten"
+  },
+  "freeTrialWordsLeft": {
+    "message": "Die Anzahl der Wörter, die bis zum Ende der kostenlosen Testversion übrig sind: "
+  },
+  "activeUntil": {
+    "message": "Aktiv bis: "
+  },
+  "trialLimitExceeded": {
+    "message": "Sie haben das Wortlimit für die Testphase erreicht. Bitte wechseln Sie zu unserer kostenpflichtigen Version, um Summary Master ohne Einschränkungen weiter zu nutzen."
+  },
+  "gptLimitExceeded": {
+    "message": "GPT-Fehler: Die maximale Kontextlänge beträgt 4097 Token. Ihre Nachrichten haben jedoch 10410 Token erzeugt. Bitte reduzieren Sie die Länge der Nachrichten."
+  },
+  "textLimitExceeded": {
+    "message": "Das Wortlimit für eine Anfrage beträgt 2000, bitte entfernen Sie zusätzliche Wörter, Ihre Anzahl an Wörtern: "
+  },
+  "gptError": {
+    "message": "GPT-Fehler: Versuchen Sie es später erneut, versuchen Sie, Ihre Eingabe zu ändern "
+  },
+  "instantSummaryToggle": {
+    "message": "Text zum Zusammenfassen einfügen"
+  },
+  "menuHome": {
+    "message": "Startseite"
+  },
+  "menuSummaries": {
+    "message": "Gespeicherte Zusammenfassungen"
+  },
+  "menuProfile": {
+    "message": "Profil"
+  },
+  "userEmailText": {
+    "message": "E-Mail des Benutzers: "
   }
 }

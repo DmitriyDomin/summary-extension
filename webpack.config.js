@@ -3,13 +3,12 @@ const path = require('path');
 module.exports = {
   mode: 'development',
   entry: {
-    popup: './popup.js',
+    popup: './popup/popup.js',
     background: './background.js',
-    // content: './content.js',
-    // customSelect: './custom-select.js',
-    // load: './load-scripts.js',
-    // handlers: './add-select-handlers.js',
-    // gpt4_api: './gpt4_api.js'
+    selectHandlers: './custom-select/add-select-handlers.js',
+    contentSummary: './content-summary/content-summary.js',
+    gpt: './api/gpt.js',
+    customSelect: './custom-select/custom-select.js'
   },
   devtool: 'source-map',
   output: {

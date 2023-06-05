@@ -3,7 +3,7 @@
     z-index: 99999999;
     top: 10px;
     right: 10px;
-    width: 350px;
+    width: 450px;
     padding: 0 20px 40px 20px;
     background-color: white;
     border: 1px solid black;
@@ -13,6 +13,17 @@
     justify-content: center;
     flex-direction: column;
     align-items: center;
+}
+
+.summary-container-SE::before {
+    content: '';
+    background-image: url(../images/icon128.png);
+    width: 48px;
+    height: 48px;
+    left: 5px;
+    top: 5px;
+    position: absolute;
+    background-size: contain;
 }
 
 .summary-container-SE.loading {
@@ -30,10 +41,35 @@
     cursor: pointer;
 }
 
+.limit-SE {
+    position: fixed;
+    z-index: 99999999;
+    top: 10px;
+    right: 5px;
+    padding: 20px;
+}
+
+.header-SE {
+    border-bottom: 1px solid black;
+    font-size: 28px;
+    color: #a2474d;
+    padding-top: 0;
+    width: 100%;
+    text-align: center;
+}
+
+.alert-text-SE {
+    font-size: 20px;
+}
+
 .loading-spinner-SE {
     display: inline-block;
     width: 80px;
     height: 80px;
+}
+
+.summary-topic {
+    padding: 15px 50px;
 }
 
 .loading-spinner-SE:after {
@@ -46,6 +82,15 @@
     border: 6px solid #fff;
     border-color: #08dfb2 transparent #08dfb2 transparent;
     animation: lds-dual-ring 1.2s linear infinite;
+}
+
+@keyframes lds-dual-ring {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 .copy-button-SE {
@@ -64,13 +109,4 @@
 
 .copy-button-SE:hover {
     filter: brightness(80%);
-}
-
-@keyframes lds-dual-ring {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
 }

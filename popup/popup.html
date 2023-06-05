@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <link rel="stylesheet" href="custom-select.css">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../custom-select/custom-select.css">
+    <link rel="stylesheet" href="popup.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -25,8 +25,12 @@
     </div>
 </div>
 <div class="menu">
-    <div class="menu__home menu__item active" id="menuHome">Home</div>
-    <div class="menu__summaries menu__item" id="menuSummaries">Saved summaries</div>
+    <div class="menu__home menu__item active" id="menuHome" data-i18n="menuHome">Home</div>
+    <div class="menu__summaries menu__item" id="menuSummaries" data-i18n="menuSummaries">Saved summaries</div>
+    <div class="menu__summaries menu__item" id="profile" data-i18n="menuProfile">Profile</div>
+</div>
+<div class="loader hidden" id="loader">
+    <div class="loader__spinner"></div>
 </div>
 <div class="home-page page active-page" id="homePage">
     <div class="target-language-container">
@@ -60,7 +64,7 @@
     <button id="summarizeWebpageButton" data-i18n="summarizeWebpageButton" class="summarize-webpage button"></button>
 
     <div class="instant-summary-container">
-        <div class="instant-summary-toggle closed" id="instantSummaryToggle">Insert text to summarize</div>
+        <div class="instant-summary-toggle closed" id="instantSummaryToggle" data-i18n="instantSummaryToggle">Insert text to summarize</div>
         <div class="instant-summary">
             <textarea name="instantSummaryTextarea" class="instant-summary__textarea" id="instantSummaryTextarea"></textarea>
             <button class="instant-summary__button" id="instantSummaryButton" disabled>
@@ -71,29 +75,35 @@
     <div class="save-content-container">
         <div class="save-content-tags">
             <label for="tags" id="tagsLabel" data-i18n="tagsLabel">Tags:</label>
-            <input type="text" id="tags" data-i18n="tags" placeholder="Enter tags separated by commas" class="save-content-input">
+            <input disabled type="text" id="tags" data-i18n="tags" placeholder="Enter tags separated by commas" class="save-content-input">
         </div>
         <div class="save-button-container">
             <button id="saveButton" data-i18n="saveButton" class="save-content-button button" disabled>Save Summary</button>
             <i class="far fa-check-circle save-content__icon" id="savedContentIcon"></i>
             <i class="fas fa-spinner save-content__icon" id="loadingContentIcon"></i>
-            <p id="saveButtonError" class="save-content__error">Summary with these tags already exists</p>
+            <p id="saveButtonError" data-i18n="saveButtonError" class="save-content__error">Summary with these tags already exists</p>
         </div>
     </div>
     <div class="share-container">
-        <button id="shareEmail" data-i18n="shareEmail"  class="button-email button">Share via Email</button>
-        <button id="shareTwitter" data-i18n="shareTwitter" class="button-twitter button">Share on Twitter</button>
+        <button id="shareEmail" data-i18n="shareEmail"  class="button-email button share__button" disabled>Share via Email</button>
+        <button id="shareTwitter" data-i18n="shareTwitter" class="button-twitter button share__button" disabled>Share on Twitter</button>
     </div>
 </div>
 <div class="summaries-page page" id="summariesPage">
     <div class="search">
-        <input type="text" class="search__input" id='summaryInput' placeholder="Enter the text">
+        <input type="text" class="search__input" id='summaryInput' data-i18n="summaryInput" placeholder="Enter the text">
         <i id="savedButtonIcon" class="fas fa-search search__icon"></i>
     </div>
     <div id="savedSummaries"></div>
 </div>
-<script src="load-scripts.js"></script>
+<div class="profile-page page" id="profilePage">
+    <div class="profile">
+        <div class="profile__email" id="profileEmail"></div>
+        <div class="profile__trial-info" id="profileInfo"></div>
+        <button class="profile__subscription button" id="profileSubscription" data-i18n="profileSubscription">Manage the subscription</button>
+    </div>
+</div>
+<script src="../helpers/load-scripts.js"></script>
 <!--<script src="node_modules/extpay/ExtPay.dev.js"></script>-->
-
 </body>
 </html>

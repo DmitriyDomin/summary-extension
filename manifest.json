@@ -4,27 +4,30 @@
   "version": "1.0",
   "web_accessible_resources": [
     {
-      "resources": ["summary.css"],
+      "resources": ["content-summary/content-summary.css", "images/icon128.png", "_locales/*"],
       "matches": ["<all_urls>"]
     }
   ],
-  "description": "Generate summaries of web content using GPT-4 API.",
+  "description": "Generate summaries of web content using GPT API.",
   "permissions": ["contextMenus", "activeTab", "storage"],
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "./popup/popup.html",
     "default_icon": {
       "24": "images/icon24.png",
       "48": "images/icon48.png",
       "128": "images/icon128.png"
     }
   },
+  "host_permissions": [
+    "https://us-central1-summary-ext.cloudfunctions.net/*"
+  ],
   "background": {
     "service_worker": "dist/background.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js", "gpt4_api.js"]
+      "js": ["./dist/contentSummary.js", "./dist/gpt.js"]
     }
   ],
   "icons": {

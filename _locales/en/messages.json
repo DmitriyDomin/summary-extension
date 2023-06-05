@@ -15,13 +15,13 @@
     "message": "Summary Length:"
   },
   "shortText": {
-    "message": "Short(50-70 words)"
+    "message": "Short(<100 words)"
   },
   "mediumText": {
-    "message": "Medium(100-125 words)"
+    "message": "Medium(150-200 words)"
   },
   "longText": {
-    "message": "Long(150-180 words)"
+    "message": "Long(250-350 words)"
   },
   "tags": {
     "message": "Enter tags separated by commas"
@@ -67,5 +67,47 @@
   },
   "copy": {
     "message": "Copy"
+  },
+  "saveButtonError": {
+    "message": "Summary with these tags already exists"
+  },
+  "summaryInput": {
+    "message": "Enter the text"
+  },
+  "profileSubscription": {
+    "message": "Manage the subscription"
+  },
+  "freeTrialWordsLeft": {
+    "message": "The number of words left until the end of the free trial: "
+  },
+  "activeUntil": {
+    "message": "Active until: "
+  },
+  "trialLimitExceeded": {
+    "message": "You have reached the limit of words for the trial period. Please upgrade to our paid version to continue using Summary Master without limitations."
+  },
+  "gptLimitExceeded": {
+    "message": "GPT Error: The maximum context length is 4097 tokens. However, your messages resulted in 10410 tokens. Please reduce the length of the messages."
+  },
+  "textLimitExceeded": {
+    "message": "The Limit of words in one request is 2000, please remove extra words, your number of words: "
+  },
+  "gptError": {
+    "message": "GPT Error: try again later, try to change your input "
+  },
+  "instantSummaryToggle": {
+    "message": "Insert text to summarize"
+  },
+  "menuHome": {
+    "message": "Home"
+  },
+  "menuSummaries": {
+    "message": "Saved summaries"
+  },
+  "menuProfile": {
+    "message": "Profile"
+  },
+  "userEmailText": {
+    "message": "User's email: "
   }
 }
