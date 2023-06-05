@@ -1,4 +1,4 @@
-const URL = 'http://127.0.0.1:5001/summary-ext/us-central1/generateChatCompletion';
+const URL = 'https://us-central1-summary-ext.cloudfunctions.net/generateChatCompletion';
 
 export async function generateSummary(prompt) {
   const response = await fetch(URL, {

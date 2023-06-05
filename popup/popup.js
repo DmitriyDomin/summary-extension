@@ -1,4 +1,4 @@
-import {checkPaymentStatus, getUser, isLoggedIn, openPaymentPage, openSignUp} from "../api/extpay";
+import {checkPaymentStatus, getUser, isLoggedIn, openLoginPage, openPaymentPage, openSignUp} from "../api/extpay";
 import {getNumberOfWordsLeft} from "../api/firebase";
 import {getTranslation, updateUIWithLanguage} from "../helpers/i18n";
 import {TARGET_LANGUAGE, USER_LANGUAGE} from "../helpers/constants";

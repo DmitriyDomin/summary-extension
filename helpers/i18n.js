@@ -28,7 +28,7 @@ export async function updateUIWithLanguage(language = 'en') {
 
 export async function getTranslation(key) {
   const language = (await chrome.storage.local.get(USER_LANGUAGE))
-    ? (await chrome.storage.local.get(USER_LANGUAGE))[USER_LANGUAGE]
+    ? (await chrome.storage.local.get(USER_LANGUAGE))[USER_LANGUAGE] || 'en'
     : 'en';
   const messagesUrl = chrome.runtime.getURL(`_locales/${language}/messages.json`);
   const response = await fetch(messagesUrl);

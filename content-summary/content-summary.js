@@ -62,12 +62,10 @@ async function sendGenerateSummaryRequest(prompt, text, targetLanguage, sendResp
       updateWordCount(text);
       showSummary(updatedSummary, sendResponse);
     }
+  }, async (error) => {
+    hideLoading();
+    await handleGptRequestErrors(error, sendResponse);
   });
-  // }, async (error) => {
-  //   console.log(error);
-  //   hideLoading();
-  //   await handleGptRequestErrors(error, sendResponse);
-  // });
 }
 
 async function handleGptRequestErrors(error, sendResponse) {

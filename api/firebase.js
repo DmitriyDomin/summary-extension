@@ -30,8 +30,13 @@ export async function updateWordCount(str) {
     await updateDoc(userDoc, { wordCount: currentWordCount + wordCount });
   } else {
     // Create a new document with email and wordCount if it does not exist
-    await setDoc(userDoc, { email: user.email, wordCount: wordCount });
+    await createUser(user, wordCount);
   }
+}
+
+async function createUser(user, wordCount = 0) {
+  let userDoc = doc(db, 'users', user.email);
+  await setDoc(userDoc, { email: user.email, wordCount: wordCount });
 }
 
 export async function checkIfWordLimitExceeded(str, user) {
@@ -39,9 +44,13 @@ export async function checkIfWordLimitExceeded(str, user) {
 
   let userDoc = doc(db, 'users', user.email);
   let docSnap = await getDoc(userDoc);
-
-  const totalWords = docSnap ? (docSnap.data().wordCount || 0) + wordCount : 0;
-  return totalWords > WORD_LIMIT;
+  if (docSnap.exists()) {
+    const totalWords = docSnap ? (docSnap.data().wordCount || 0) + wordCount : 0;
+    return totalWords > WORD_LIMIT;
+  } else {
+    await createUser(user);
+    return true;
+  }
 }
 
 export async function getNumberOfWordsLeft(user) {
