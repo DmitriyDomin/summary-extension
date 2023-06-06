@@ -55,8 +55,8 @@ async function displaySavedSummaries(savedSummaries) {
     summaryElement.classList.add('summary');
     summaryElement.innerHTML = getSummaryTemplate(savedSummary, index);
     savedSummariesContainer.appendChild(summaryElement);
-    hideLoader();
   });
+  hideLoader();
 
   addListenersForDeleteButtons(savedSummaries);
   addListenersForCopyButtons(savedSummaries);

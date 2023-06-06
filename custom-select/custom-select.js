@@ -5,11 +5,12 @@ l = x.length;
 for (i = 0; i < l; i++) {
   selElmnt = x[i].getElementsByTagName("select")[0];
   ll = selElmnt.length;
-  console.log(ll, selElmnt);
   /* For each element, create a new DIV that will act as the selected item: */
   a = document.createElement("DIV");
-  a.setAttribute("class", "select-selected");
   a.innerHTML = selElmnt.options[selElmnt.selectedIndex].innerHTML;
+  a.setAttribute("class", "select-selected");
+  const i18n = selElmnt.options[selElmnt.selectedIndex].getAttribute('data-i18n');
+  if (i18n) a.setAttribute('data-i18n', i18n);
   a.classList.add(...selElmnt.options[selElmnt.selectedIndex].classList);
   x[i].appendChild(a);
   /* For each element, create a new DIV that will contain the option list: */
@@ -22,6 +23,8 @@ for (i = 0; i < l; i++) {
     // img = document.createElement("img");
     // img.src = `images/flags/${selElmnt.options[j].value}.svg`;
     // img.alt = 'flag';
+    const i18n = selElmnt.options[j].getAttribute('data-i18n');
+    if (i18n) c.setAttribute('data-i18n', i18n);
     c.innerHTML = selElmnt.options[j].innerHTML;
     c.classList.add(...selElmnt.options[j].classList);
     c.id = selElmnt.options[j].value;
@@ -33,11 +36,12 @@ for (i = 0; i < l; i++) {
       sl = s.length;
       h = this.parentNode.previousSibling;
       for (i = 0; i < sl; i++) {
-        if (s.options[i].innerHTML == this.innerHTML) {
+        if (s.options[i].innerHTML === this.innerHTML) {
           s.selectedIndex = i;
           h.innerHTML = this.innerHTML;
+          const i18n = this.getAttribute('data-i18n');
+          if (i18n) h.setAttribute('data-i18n', i18n);
           h.classList = [];
-          console.log(...this.classList);
           h.classList.add(...this.classList, 'select-selected');
           // const classList =  [...h.classList].filter((className) => className );
           y = this.parentNode.getElementsByClassName("same-as-selected");
@@ -73,7 +77,7 @@ function closeAllSelect(elmnt) {
   xl = x.length;
   yl = y.length;
   for (i = 0; i < yl; i++) {
-    if (elmnt == y[i]) {
+    if (elmnt === y[i]) {
       arrNo.push(i)
     } else {
       y[i].classList.remove("select-arrow-active");

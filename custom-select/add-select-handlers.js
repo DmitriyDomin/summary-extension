@@ -13,6 +13,7 @@ document.querySelectorAll('.language-picker .select-items div').forEach((item) =
 
 document.querySelectorAll('.target-language .select-items div').forEach((item) => {
   item.addEventListener('click', (event) => {
+    console.log(12345);
     const selectedLanguage = event.target.id;
     chrome.storage.local.set({[TARGET_LANGUAGE]: selectedLanguage});
   });

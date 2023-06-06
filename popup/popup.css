@@ -292,7 +292,10 @@ h1 {
 }
 
 .option-ru::before {
-    background-image: url(../images/flags/ru.svg);
+    content: 'RU';
+    display: flex;
+    justify-content: center;
+    align-items: baseline;
 }
 
 .option-ua::before {
