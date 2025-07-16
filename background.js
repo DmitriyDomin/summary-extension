@@ -60,7 +60,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log('Storing saved video data for live chat:', request.videoData);
     temporaryData['videoData'] = request.videoData;
     temporaryData['shouldOpenLiveTab'] = true;
-    temporaryData['isFromSavedVideo'] = true; // Flag to indicate this is saved video data
     sendResponse({ status: 'saved_video_stored' });
   } else if (request.action === "getVideoData") {
     // Return stored video data and clear the flag

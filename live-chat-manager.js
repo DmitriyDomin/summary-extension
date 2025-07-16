@@ -27,7 +27,32 @@ class LiveChatManager {
       this.loadVideoWithHistory(event.detail.videoData, event.detail.chatHistory);
     });
     
-    // Only restore session if we're not already initialized with a video
+    // CRITICAL FIX: Check if we have saved video data waiting first
+    let hasSavedVideoWaiting = false;
+    try {
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: 'getVideoData' }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve(response);
+          }
+        });
+      });
+      
+      if (response && response.videoData && response.isFromSavedVideo) {
+        console.log('🎬 LiveChatManager: Found saved video data waiting:', response.videoData.title);
+        hasSavedVideoWaiting = true;
+        
+        // Initialize directly with saved video data
+        await this.initializeWithCurrentVideo(response.videoData);
+        return; // Exit early - don't run restorePreviousSession
+      }
+    } catch (error) {
+      console.log('🎬 LiveChatManager: No saved video data waiting:', error.message);
+    }
+    
+    // Only restore session if we're not already initialized with a video AND no saved video waiting
     if (!this.isInitialized || !this.currentVideoId || !this.youtubeLiveSummary) {
       console.log('🎬 LiveChatManager: First initialization, attempting restore...');
       // Add a small delay to ensure DOM is fully ready and avoid flash errors
@@ -51,9 +76,7 @@ class LiveChatManager {
   setupEventListeners() {
     const sendButton = document.getElementById('sendMessageBtn');
     const chatInput = document.getElementById('chatInput');
-    const bulletPointsBtn = document.getElementById('bulletPointsBtn');
-    const questionsBtn = document.getElementById('questionsBtn');
-    const saveVideoBtn = document.getElementById('saveVideoBtn');
+    // REMOVED: Duplicate bullet points and questions listeners - YouTubeLiveSummary handles these
 
     if (sendButton) {
       sendButton.addEventListener('click', () => this.sendMessage());
@@ -68,17 +91,8 @@ class LiveChatManager {
       });
     }
 
-    if (bulletPointsBtn) {
-      bulletPointsBtn.addEventListener('click', () => this.generateBulletPoints());
-    }
-
-    if (questionsBtn) {
-      questionsBtn.addEventListener('click', () => this.generateQuestions());
-    }
-
-    if (saveVideoBtn) {
-      saveVideoBtn.addEventListener('click', () => this.saveCurrentVideo());
-    }
+    // Save button is handled by YouTubeLiveSummary to avoid conflicts
+    // Bullet points and questions buttons are handled by YouTubeLiveSummary to avoid conflicts
   }
 
   async restorePreviousSession() {
@@ -92,7 +106,7 @@ class LiveChatManager {
 
       if (!activeTab.url || !activeTab.url.includes('youtube.com/watch')) {
         console.log('🎬 Not on YouTube video page, showing no video message');
-        this.showNoVideoMessage();
+        // this.showNoVideoMessage();
         return;
       }
 
@@ -117,7 +131,7 @@ class LiveChatManager {
 
       if (savedSession && savedSession.videoData && savedSession.timestamp > Date.now() - (24 * 60 * 60 * 1000)) {
         console.log('🎬 Restoring from temporary session:', savedSession.videoData.title);
-        await this.loadVideoWithHistory(savedSession.videoData, savedSession.chatHistory || []);
+        await this.loadVideoWithHistory({ ...savedSession.videoData, isFromSavedVideo: false }, savedSession.chatHistory || []);
         return;
       }
 
@@ -235,7 +249,25 @@ class LiveChatManager {
       // Clear any existing content to prevent flash
       this.clearChatDisplay();
       
-      // CRITICAL FIX: Check if this video is already saved before initializing
+      // CRITICAL FIX: Check temporary session storage FIRST (for recent unsaved summaries)
+      const sessionKey = `liveChatSession_${videoData.videoId}`;
+      const sessionResult = await chrome.storage.local.get([sessionKey]);
+      const savedSession = sessionResult[sessionKey];
+
+      if (savedSession && savedSession.videoData && savedSession.timestamp > Date.now() - (24 * 60 * 60 * 1000)) {
+        console.log('🎬 Found temporary session for this video - loading from temp storage:', savedSession.videoData.title);
+        console.log('🎬 Temp session has', savedSession.chatHistory?.length || 0, 'chat messages');
+        
+        // Load from temporary session storage (preserves transcript and recent chat)
+        await this.loadVideoWithHistory({ 
+          ...savedSession.videoData, 
+          isFromSavedVideo: false 
+        }, savedSession.chatHistory || []);
+        this.isInitialized = true;
+        return;
+      }
+      
+      // SECOND: Check if this video is permanently saved 
       const savedVideo = await this.checkIfVideoSaved(videoData.videoId);
       
       if (savedVideo && savedVideo.chatHistory && savedVideo.chatHistory.length > 0) {
@@ -246,7 +278,7 @@ class LiveChatManager {
           ...videoData,
           chatHistory: savedVideo.chatHistory,
           summary: savedVideo.summary || '',
-          isFromSavedVideo: true
+          // isFromSavedVideo: true
         };
         
         await this.loadVideoWithHistory(enhancedVideoData, savedVideo.chatHistory);
@@ -432,7 +464,9 @@ class LiveChatManager {
     // Prepare video data with chat history for proper initialization
     const videoDataWithHistory = {
       ...videoData,
-      chatHistory: chatHistory
+      chatHistory: chatHistory,
+      // IMPORTANT: Mark if this came from saved video storage
+      isFromSavedVideo: videoData.isFromSavedVideo ?? (chatHistory && chatHistory.length > 0 && !videoData.isNewVideo)
     };
     
     // Initialize with video data
@@ -441,18 +475,18 @@ class LiveChatManager {
     
     // Clear any existing chat display first
     const chatMessages = document.getElementById('chatMessages');
-    if (chatMessages) {
-      chatMessages.innerHTML = '';
-    }
+    // if (chatMessages) {
+    //   chatMessages.innerHTML = '';
+    // }
     
     // Restore chat history in the UI
     if (chatHistory && chatHistory.length > 0) {
       chatHistory.forEach(chat => {
         // Only add user message if it's not the initial summary
         if (chat.type !== 'summary') {
-          this.youtubeLiveSummary.addMessageToChat(chat.message, 'user');
+          this.youtubeLiveSummary.addMessageToChat(chat.message, 'user', false); // Don't auto-save when restoring
         }
-        this.youtubeLiveSummary.addMessageToChat(chat.response, 'assistant');
+        this.youtubeLiveSummary.addMessageToChat(chat.response, 'assistant', false); // Don't auto-save when restoring
       });
       
       // Set the chat history in the YouTube Live Summary instance
@@ -496,55 +530,6 @@ class LiveChatManager {
     } catch (error) {
       console.error('Error sending message:', error);
       this.showErrorMessage('Failed to send message. Please try again.');
-    }
-  }
-
-  async generateBulletPoints() {
-    if (!this.youtubeLiveSummary) return;
-    
-    try {
-      await this.youtubeLiveSummary.generateBulletPoints();
-      await this.saveCurrentSession();
-    } catch (error) {
-      console.error('Error generating bullet points:', error);
-      this.showErrorMessage('Failed to generate bullet points. Please try again.');
-    }
-  }
-
-  async generateQuestions() {
-    if (!this.youtubeLiveSummary) return;
-    
-    try {
-      await this.youtubeLiveSummary.generateQuestions();
-      await this.saveCurrentSession();
-    } catch (error) {
-      console.error('Error generating questions:', error);
-      this.showErrorMessage('Failed to generate questions. Please try again.');
-    }
-  }
-
-  async saveCurrentVideo() {
-    if (!this.youtubeLiveSummary || !this.currentVideoId) {
-      this.showErrorMessage('No video data available to save.');
-      return;
-    }
-    
-    try {
-      // Call the correct method name from YouTubeLiveSummary
-      await this.youtubeLiveSummary.handleSaveVideo();
-      
-      // Show success message
-      const button = document.getElementById('saveVideoBtn');
-      if (button) {
-        const originalHtml = button.innerHTML;
-        button.innerHTML = '<i class="fas fa-check"></i>';
-        setTimeout(() => {
-          button.innerHTML = originalHtml;
-        }, 2000);
-      }
-    } catch (error) {
-      console.error('Error saving video:', error);
-      this.showErrorMessage(`Failed to save video data: ${error.message}`);
     }
   }
 

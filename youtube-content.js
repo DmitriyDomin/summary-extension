@@ -22,38 +22,41 @@ async function getApiKey() {
 }
 
 async function makeApiRequest(prompt) {
-  const apiKey = await getApiKey();
+  // Get the preferred AI provider and API key
+  const storage = await chrome.storage.local.get(['aiProvider', 'apiKey', 'googleApiKey']);
+  const aiProvider = storage.aiProvider || 'openai';
   
-  if (!apiKey) {
-    throw new Error('API key not configured. Please set your OpenAI API key in the extension settings.');
+  let apiKey;
+  // if (aiProvider === 'google') {
+  //   apiKey = storage.googleApiKey;
+  //   // if (!apiKey) {
+  //   //   throw new Error('Google AI API key not configured. Please set your Google AI API key in settings.');
+  //   // }
+  // } else {
+  //   apiKey = storage.apiKey;
+  //   if (!apiKey) {
+  //     throw new Error('OpenAI API key not configured. Please set your OpenAI API key in settings.');
+  //   }
+  // }
+  
+  // Use the centralized API service
+  if (true) {
+    return await apiService.getGeminiResponse(
+      apiKey, 
+      'gemini-2.0-flash-001', 
+      "You are a helpful AI assistant that analyzes YouTube video content and provides detailed, accurate responses based on video transcripts.", 
+      prompt, 
+      0.3
+    );
+  } else {
+    return await apiService.getOpenAIResponse(
+      apiKey, 
+      'gpt-4o-mini', 
+      prompt, 
+      300, 
+      0.3
+    );
   }
-  
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 300,
-      temperature: 0.3
-    })
-  });
-  
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Invalid API key. Please check your OpenAI API key.');
-    } else if (response.status === 429) {
-      throw new Error('Rate limit exceeded. Please try again later.');
-    } else {
-      throw new Error(`API request failed: ${response.statusText}`);
-    }
-  }
-  
-  const data = await response.json();
-  return data.choices[0].message.content.trim();
 }
 
 // Helper functions for parsing
@@ -140,48 +143,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     });
     return true; // Keep channel open for async response
-  } else if (request.action === 'summarize' || request.action === 'summarizeWebpage') {
-    // Handle summarization requests
-    handleSummarization(request, sendResponse);
-    return true; // Keep channel open for async response
   }
   
   return true;
 });
 
-async function handleSummarization(request, sendResponse) {
-  try {
-    const videoId = getVideoId();
-    if (!videoId) {
-      throw new Error('Could not get video ID');
-    }
-    
-    const transcript = await fetchTranscript(videoId);
-    if (!transcript || transcript === 'No transcript available') {
-      throw new Error('No transcript available for this video');
-    }
-    
-    const title = document.querySelector('h1.ytd-watch-metadata')?.textContent || 'YouTube Video';
-    const prompt = `Video Title: ${title}\n\nTranscript: ${transcript}\n\nSummarize this YouTube video transcript in a clear and concise manner. Include a title in parentheses () and language in brackets [].`;
-    
-    const summary = await makeApiRequest(prompt);
-    let [updatedSummary, originalLang] = getLanguage(summary);
-    let [finalSummary, topic] = parseText(updatedSummary);
-    
-    // Send topic to popup
-    chrome.runtime.sendMessage({ action: "updateTags", data: topic });
-    
-    // Display summary on YouTube page
-    displayYouTubeSummary(finalSummary, topic);
-    
-    sendResponse({ success: true, summary: finalSummary });
-    
-  } catch (error) {
-    console.error('YouTube summarization error:', error);
-    displayYouTubeError(error.message);
-    sendResponse({ error: error.message });
-  }
-}
 
 // Check if we're on YouTube
 function isYouTubePage() {
@@ -860,7 +826,7 @@ async function handleSummarize() {
     let videoData;
     
     try {
-      const summary = await makeApiRequest(prompt);
+      // const summary = await makeApiRequest(prompt);
       
       // Parse the summary
       let [cleanSummary, originalLang] = getLanguage(summary);

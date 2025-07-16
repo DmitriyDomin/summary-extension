@@ -228,14 +228,7 @@ class SummariesManager {
     console.log('Loading saved video in live chat:', video.title);
     
     // Prepare video data WITHOUT transcript (will be fetched fresh)
-    const basicVideoData = {
-      videoId: video.videoId,
-      title: video.title,
-      url: video.url,
-      thumbnail: video.thumbnail,
-      // NO transcript data - will be fetched when needed
-      chatHistory: video.chatHistory || []
-    };
+    const basicVideoData = { ...video };
     
     // Store the basic video data in background script
     chrome.runtime.sendMessage({
@@ -284,5 +277,8 @@ class SummariesManager {
   }
 }
 
-// Export for use in popup
+// Export for use in popup and make global instance available
 window.SummariesManager = SummariesManager;
+
+// Global instance that other components can access
+window.summariesManager = null;

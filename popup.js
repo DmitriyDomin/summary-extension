@@ -796,6 +796,8 @@ window.handlePageSwitch = async function(targetPageId) {
       if (!summariesManager) {
         if (window.SummariesManager) {
           summariesManager = new window.SummariesManager();
+          // Make it globally available
+          window.summariesManager = summariesManager;
         }
       }
       if (summariesManager && summariesManager.initialize) {

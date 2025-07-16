@@ -806,6 +806,7 @@ h1 {
   align-items: center;
   margin-bottom: 8px;
   font-size: 12px;
+  position: relative;
 }
 
 .message-header strong {
@@ -1190,4 +1191,27 @@ h1 {
 
 .modal-actions .button:hover {
   background: #0551d4;
+}
+
+/* Delete message button styles */
+.delete-message-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  opacity: 0;
+  transition: all 0.2s ease;
+  margin-left: 8px;
+}
+
+.delete-message-btn:hover {
+  background: #ffebee;
+  color: #f44336;
+}
+
+.chat-message:hover .delete-message-btn {
+  opacity: 1;
 }

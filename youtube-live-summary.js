@@ -6,6 +6,7 @@ class YouTubeLiveSummary {
     this.isProcessing = false;
     this.autoSaveEnabled = true;
     this.saveTimeout = null;
+    this.messageMap = new Map(); // Track messages for deletion
   }
 
   async initialize(videoData) {
@@ -14,34 +15,104 @@ class YouTubeLiveSummary {
     try {
       this.currentVideoData = videoData;
       
-      // First check if this video is already saved
-      const savedVideo = await this.checkIfVideoAlreadySaved(videoData.videoId);
-      
-      if (savedVideo) {
-        console.log('🎬 Video already saved, loading existing data:', savedVideo.title);
-        // Load saved data instead of creating new summary
-        await this.loadSavedVideoData(savedVideo);
-        return;
-      }
-      
+      // IMMEDIATELY setup UI with what we have
       this.setupUI();
       this.setupEventListeners();
       
-      // Only start initial summary if this is NOT a saved video with existing chat history
-      if (!videoData.chatHistory || videoData.chatHistory.length === 0) {
-        // FIXED: Generate summary in background but don't show it in chat
-        await this.generateBackgroundSummary();
-      } else {
-        console.log('🎬 Loading saved video with existing chat history, skipping initial summary');
-        // Set the chat history from saved data
-        this.chatHistory = videoData.chatHistory || [];
-        // Restore chat in UI
+      // Show loading message right away if we need to generate content
+      let needsInitialSummary = true;
+      let hasExistingChat = false;
+      
+      // Check for existing chat history in passed data
+      if (videoData.chatHistory && videoData.chatHistory.length > 0) {
+        console.log('🎬 Video has existing chat history, loading...');
+        this.chatHistory = videoData.chatHistory;
         await this.restoreChatHistory();
+        hasExistingChat = true;
+        needsInitialSummary = false;
+        
+        // ONLY mark as saved if this data came from a manually saved video
+        if (videoData.isFromSavedVideo) {
+          this.updateSaveButtonForSavedVideo();
+        }
+      } else {
+        // Check if this video is saved in storage (fallback check)
+        const savedVideo = await this.checkIfVideoAlreadySaved(videoData.videoId);
+        if (savedVideo && savedVideo.chatHistory && savedVideo.chatHistory.length > 0) {
+          console.log('🎬 Found saved video in storage, loading existing data:', savedVideo.title);
+          // Update current video data with saved data
+          this.currentVideoData = {
+            ...this.currentVideoData,
+            chatHistory: savedVideo.chatHistory
+          };
+          this.chatHistory = savedVideo.chatHistory;
+          await this.restoreChatHistory();
+          hasExistingChat = true;
+          needsInitialSummary = false;
+          this.updateSaveButtonForSavedVideo(); // This video is actually saved
+        }
+      }
+      
+      // If we need an initial summary, show loading and generate asynchronously
+      if (needsInitialSummary) {
+        console.log('🎬 No existing summary found, generating new one...');
+        // Add loading message immediately
+        const loadingId = this.addLoadingMessage();
+        
+        // Generate summary asynchronously without blocking UI
+        this.generateInitialSummaryAsync(loadingId);
       }
       
     } catch (error) {
       console.error('🎬 Error initializing YouTubeLiveSummary:', error);
       this.showErrorMessage('Failed to initialize Live Summary. Please try again.');
+    }
+  }
+
+  // Generate initial summary asynchronously to avoid blocking UI
+  async generateInitialSummaryAsync(loadingId) {
+    try {
+      // If no loading message was created, try to add one now
+      if (!loadingId) {
+        console.log('🎬 generateInitialSummaryAsync: No loadingId provided, trying to add loading message again...');
+        loadingId = this.addLoadingMessage();
+      }
+      
+      const initialMessage = `Please provide a comprehensive summary of this YouTube video: "${this.currentVideoData?.title}". You should include really important information, key points, and any relevant details that would help someone understand the content without watching the video. You just describe what the video is about in one sentence. Then provide a brief overview of the main topics covered in the video, we need value not just summary`;
+      
+      // Prepare the prompt with video context
+      const contextualPrompt = this.buildContextualPrompt(initialMessage, true);
+      
+      // Get API response
+      const response = await this.makeApiRequest(contextualPrompt);
+      
+      // Remove loading message only if we have a valid loadingId
+      if (loadingId) {
+        this.removeLoadingMessage(loadingId);
+      }
+      
+      // Add response to chat
+      this.addMessageToChat(response, 'assistant');
+      
+      // Save to chat history
+      const chatEntry = { 
+        message: 'Initial Summary', 
+        response, 
+        timestamp: new Date().toISOString(),
+        type: 'summary'
+      };
+      
+      this.chatHistory.push(chatEntry);
+      
+      // Auto-save chat history
+      await this.autoSaveChatHistory();
+      
+    } catch (error) {
+      console.error('🎬 Error generating initial summary:', error);
+      if (loadingId) {
+        this.removeLoadingMessage(loadingId);
+      }
+      this.addMessageToChat(`Error generating summary: ${error.message}`, 'error');
     }
   }
 
@@ -131,10 +202,22 @@ class YouTubeLiveSummary {
     if (!this.currentVideoData.chatHistory || this.currentVideoData.chatHistory.length === 0) {
       this.chatHistory = [];
       const chatMessages = document.getElementById('chatMessages');
-      if (chatMessages) chatMessages.innerHTML = '';
+      if (chatMessages) {
+        // Remove the default loading message and clear container
+        const defaultLoading = document.getElementById('defaultLoadingMessage');
+        if (defaultLoading) {
+          defaultLoading.remove();
+        }
+        chatMessages.innerHTML = '';
+      }
     } else {
       // Don't clear the chat - it will be restored by loadVideoWithHistory
       console.log('🎬 Preserving existing chat for saved video');
+      // But still remove the default loading message
+      const defaultLoading = document.getElementById('defaultLoadingMessage');
+      if (defaultLoading) {
+        defaultLoading.remove();
+      }
     }
   }
 
@@ -199,7 +282,18 @@ class YouTubeLiveSummary {
   }
 
   addLoadingMessage() {
+    console.log('🎬 addLoadingMessage: Starting...');
     const chatMessages = document.getElementById('chatMessages');
+    
+    if (!chatMessages) {
+      console.error('🎬 addLoadingMessage: chatMessages container not found!');
+      console.log('🎬 addLoadingMessage: Available elements:', 
+        Array.from(document.querySelectorAll('[id]')).map(el => el.id));
+      return null; // Return null if container doesn't exist
+    }
+    
+    console.log('🎬 addLoadingMessage: chatMessages container found, adding loading message...');
+    
     const loadingDiv = document.createElement('div');
     const loadingId = 'loading-' + Date.now();
     loadingDiv.id = loadingId;
@@ -214,15 +308,21 @@ class YouTubeLiveSummary {
           <span></span>
           <span></span>
         </div>
+        <div style="margin-top: 8px; font-size: 12px; color: #666;">
+          Generating summary...
+        </div>
       </div>
     `;
     
     chatMessages.appendChild(loadingDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    console.log('🎬 addLoadingMessage: Loading message added with ID:', loadingId);
     return loadingId;
   }
 
   removeLoadingMessage(loadingId) {
+    console.log(2345);
     const loadingElement = document.getElementById(loadingId);
     if (loadingElement) {
       loadingElement.remove();
@@ -240,6 +340,7 @@ class YouTubeLiveSummary {
         this.addMessageToChat(message, 'user');
       }
       
+      console.log('addLoadingMessage');
       // Add loading message
       const loadingId = this.addLoadingMessage();
       
@@ -334,6 +435,14 @@ class YouTubeLiveSummary {
         savedVideos[videoIndex].chatHistory = this.chatHistory;
         savedVideos[videoIndex].lastUpdated = new Date().toISOString();
         
+        // Update transcript data if available (for videos saved before transcript storage was implemented)
+        if (this.currentVideoData.transcript && !savedVideos[videoIndex].transcript) {
+          savedVideos[videoIndex].transcript = this.currentVideoData.transcript;
+        }
+        if (this.currentVideoData.timestampedTranscript && !savedVideos[videoIndex].timestampedTranscript) {
+          savedVideos[videoIndex].timestampedTranscript = this.currentVideoData.timestampedTranscript;
+        }
+        
         // Update summary for display
         const latestSummary = this.chatHistory.find(h => h.type === 'summary')?.response;
         if (latestSummary) {
@@ -341,7 +450,7 @@ class YouTubeLiveSummary {
         }
         
         await chrome.storage.local.set({ savedVideos });
-        console.log('🎬 Updated saved video with new chat history');
+        console.log('🎬 Updated saved video with new chat history and transcript data');
       }
     } catch (error) {
       console.error('🎬 Error updating saved video:', error);
@@ -635,6 +744,10 @@ Based on the video content above, please provide a detailed and helpful response
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${type}`;
     
+    // Generate unique message ID for deletion
+    const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    messageDiv.setAttribute('data-message-id', messageId);
+    
     const timestamp = new Date().toLocaleTimeString('en-US', { 
       hour12: false, 
       hour: '2-digit', 
@@ -647,6 +760,9 @@ Based on the video content above, please provide a detailed and helpful response
         <div class="message-header">
           <strong>You</strong>
           <span class="timestamp">${timestamp}</span>
+          <button class="delete-message-btn" data-message-id="${messageId}" title="Delete message">
+            <i class="fas fa-trash"></i>
+          </button>
         </div>
         <div class="message-content">${this.formatMessage(message)}</div>
       `;
@@ -655,6 +771,9 @@ Based on the video content above, please provide a detailed and helpful response
         <div class="message-header">
           <strong>Assistant</strong>
           <span class="timestamp">${timestamp}</span>
+          <button class="delete-message-btn" data-message-id="${messageId}" title="Delete message">
+            <i class="fas fa-trash"></i>
+          </button>
         </div>
         <div class="message-content">${this.formatMessage(message)}</div>
         <div class="message-actions">
@@ -668,12 +787,25 @@ Based on the video content above, please provide a detailed and helpful response
         <div class="message-header">
           <strong>Error</strong>
           <span class="timestamp">${timestamp}</span>
+          <button class="delete-message-btn" data-message-id="${messageId}" title="Delete message">
+            <i class="fas fa-trash"></i>
+          </button>
         </div>
         <div class="message-content error-content">${message}</div>
       `;
     }
     
     messageDiv.innerHTML = content;
+    
+    // Add click handler for delete button
+    const deleteBtn = messageDiv.querySelector('.delete-message-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.handleDeleteMessage(messageId);
+      });
+    }
     
     // Add click handlers for timestamp links after adding to DOM
     const timestampLinks = messageDiv.querySelectorAll('.timestamp-link');
@@ -707,6 +839,21 @@ Based on the video content above, please provide a detailed and helpful response
     
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Store message info for potential deletion
+    if (shouldAutoSave) {
+      const messageInfo = {
+        id: messageId,
+        message: type === 'user' ? message : null,
+        response: type === 'assistant' ? message : null,
+        type: type,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store message info temporarily for deletion mapping
+      if (!this.messageMap) this.messageMap = new Map();
+      this.messageMap.set(messageId, messageInfo);
+    }
   }
 
   // Show brief indicator when navigating to timestamp
@@ -759,62 +906,274 @@ Based on the video content above, please provide a detailed and helpful response
     }, 2000);
   }
 
+  // Handle message deletion
+  async handleDeleteMessage(messageId) {
+    try {
+      // Show confirmation dialog
+      const confirmed = confirm('Are you sure you want to delete this message? This action cannot be undone.');
+      if (!confirmed) return;
+      
+      // Remove message from UI
+      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (messageElement) {
+        messageElement.remove();
+      }
+      
+      // Get message info from map
+      const messageInfo = this.messageMap.get(messageId);
+      if (messageInfo) {
+        // Remove from chat history based on message content
+        if (messageInfo.type === 'user') {
+          // Find and remove the chat entry that contains this user message
+          const entryIndex = this.chatHistory.findIndex(entry => 
+            entry.message === messageInfo.message
+          );
+          if (entryIndex !== -1) {
+            this.chatHistory.splice(entryIndex, 1);
+            console.log('🗑️ Removed user message and corresponding chat entry from history');
+          }
+        } else if (messageInfo.type === 'assistant') {
+          // Find and remove the chat entry that contains this assistant response
+          const entryIndex = this.chatHistory.findIndex(entry => 
+            entry.response === messageInfo.response
+          );
+          if (entryIndex !== -1) {
+            this.chatHistory.splice(entryIndex, 1);
+            console.log('🗑️ Removed assistant response and corresponding chat entry from history');
+          }
+        }
+        
+        // Remove from message map
+        this.messageMap.delete(messageId);
+      }
+      
+      // Auto-save updated chat history
+      await this.autoSaveChatHistory();
+      
+      // Show brief confirmation
+      this.showDeleteConfirmation();
+      
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      alert('Failed to delete message. Please try again.');
+    }
+  }
+
+  // Show brief confirmation when message is deleted
+  showDeleteConfirmation() {
+    // Remove any existing confirmation
+    const existingConfirmation = document.getElementById('deleteConfirmation');
+    if (existingConfirmation) existingConfirmation.remove();
+    
+    const confirmation = document.createElement('div');
+    confirmation.id = 'deleteConfirmation';
+    confirmation.innerHTML = `
+      <i class="fas fa-check-circle"></i>
+      <span>Message deleted</span>
+    `;
+    confirmation.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #ff5722;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 10000;
+      opacity: 0;
+      transform: translateX(100%);
+      transition: all 0.3s ease;
+    `;
+    
+    document.body.appendChild(confirmation);
+    
+    // Animate in
+    setTimeout(() => {
+      confirmation.style.opacity = '1';
+      confirmation.style.transform = 'translateX(0)';
+    }, 50);
+    
+    // Animate out and remove
+    setTimeout(() => {
+      confirmation.style.opacity = '0';
+      confirmation.style.transform = 'translateX(100%)';
+      setTimeout(() => {
+        if (confirmation.parentElement) {
+          confirmation.remove();
+        }
+      }, 300);
+    }, 2000);
+  }
+
   async handleSaveVideo() {
+    console.log('🎬 handleSaveVideo: Starting save process...');
+    
     if (!this.currentVideoData || this.chatHistory.length === 0) {
+      console.log('🎬 handleSaveVideo: Missing data - videoData:', !!this.currentVideoData, 'chatHistory length:', this.chatHistory.length);
       alert('No video data or chat history to save.');
       return;
     }
 
-    // Check if already saved
-    const existingSavedVideo = await this.checkIfVideoAlreadySaved(this.currentVideoData.videoId);
-    if (existingSavedVideo) {
-      alert('This video is already saved!');
-      return;
+    console.log('🎬 handleSaveVideo: Attempting to save video:', this.currentVideoData.title);
+    console.log('🎬 handleSaveVideo: Current transcript available:', !!this.currentVideoData.transcript);
+    console.log('🎬 handleSaveVideo: Current timestampedTranscript available:', !!this.currentVideoData.timestampedTranscript);
+
+    // Show saving indicator immediately
+    const saveBtn = document.getElementById('saveVideoBtn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
     }
 
     try {
-      // Get existing saved videos
+      // Get existing saved videos with detailed logging
+      console.log('🎬 handleSaveVideo: Getting existing saved videos...');
       const result = await chrome.storage.local.get(['savedVideos']);
       const savedVideos = result.savedVideos || [];
+      console.log('🎬 handleSaveVideo: Found', savedVideos.length, 'existing saved videos');
+
+      // Check if already saved with detailed logging
+      const existingIndex = savedVideos.findIndex(v => v.videoId === this.currentVideoData.videoId);
+      console.log('🎬 handleSaveVideo: Checking for duplicate, existingIndex:', existingIndex);
+      
+      if (existingIndex !== -1) {
+        console.log('🎬 handleSaveVideo: Video already saved at index:', existingIndex);
+        alert('This video is already saved!');
+        
+        // Reset button
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="fas fa-save"></i>';
+        }
+        return;
+      }
+
+      // ENSURE we have transcript data before saving
+      let transcriptData = this.currentVideoData.transcript || '';
+      let timestampedTranscriptData = this.currentVideoData.timestampedTranscript || [];
+
+      console.log('🎬 handleSaveVideo: Initial transcript data:', {
+        hasTranscript: !!transcriptData,
+        transcriptLength: transcriptData.length,
+        hasTimestampedTranscript: !!timestampedTranscriptData,
+        timestampedTranscriptLength: timestampedTranscriptData.length
+      });
+
+      // If we don't have transcript, try to fetch it fresh
+      if (!transcriptData && this.currentVideoData.videoId) {
+        console.log('🎬 handleSaveVideo: No transcript available, attempting to fetch fresh...');
+        try {
+          const activeTab = await new Promise((resolve) =>
+            chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+          );
+          
+          if (activeTab.url && activeTab.url.includes('youtube.com/watch') && activeTab.url.includes(this.currentVideoData.videoId)) {
+            console.log('🎬 handleSaveVideo: Sending transcript fetch request...');
+            const transcriptResponse = await new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => reject(new Error('Timeout')), 10000);
+              chrome.tabs.sendMessage(activeTab.id, { 
+                action: 'fetchTranscript', 
+                videoId: this.currentVideoData.videoId 
+              }, (response) => {
+                clearTimeout(timeout);
+                if (chrome.runtime.lastError) {
+                  reject(chrome.runtime.lastError);
+                } else {
+                  resolve(response);
+                }
+              });
+            });
+            
+            if (transcriptResponse && transcriptResponse.transcript) {
+              console.log('🎬 handleSaveVideo: Successfully fetched fresh transcript for saving');
+              transcriptData = transcriptResponse.transcript;
+              timestampedTranscriptData = transcriptResponse.timestampedTranscript || [];
+              
+              // Update current video data
+              this.currentVideoData.transcript = transcriptData;
+              this.currentVideoData.timestampedTranscript = timestampedTranscriptData;
+            } else {
+              console.log('🎬 handleSaveVideo: No transcript in response');
+            }
+          } else {
+            console.log('🎬 handleSaveVideo: Not on matching YouTube page');
+          }
+        } catch (error) {
+          console.log('🎬 handleSaveVideo: Could not fetch fresh transcript for saving:', error.message);
+          // Continue without transcript - better to save something than nothing
+        }
+      }
 
       const videoSaveData = {
         videoId: this.currentVideoData.videoId,
         title: this.currentVideoData.title,
         url: this.currentVideoData.url,
         thumbnail: this.currentVideoData.thumbnail,
-        // DON'T save transcript data to long-term storage (space optimization)
-        // transcript: this.currentVideoData.transcript,
-        // timestampedTranscript: this.currentVideoData.timestampedTranscript,
+        // CRITICAL: Save transcript data to permanent storage
+        transcript: transcriptData,
+        timestampedTranscript: timestampedTranscriptData,
         // Save summary for display in saved videos list
         summary: this.chatHistory.find(h => h.type === 'summary')?.response || '',
         // Keep chat history for restoring conversations
         chatHistory: this.chatHistory,
         savedAt: new Date().toISOString(),
         // Additional data for backward compatibility
-        bulletPoints: this.chatHistory.find(h => h.message.includes('bullet points'))?.response || '',
-        questions: this.chatHistory.find(h => h.message.includes('questions'))?.response || ''
+        bulletPoints: this.chatHistory.find(h => h.message && h.message.toLowerCase().includes('bullet points'))?.response || '',
+        questions: this.chatHistory.find(h => h.message && h.message.toLowerCase().includes('questions'))?.response || ''
       };
 
-      // Add new video (no need to check existingIndex since we already verified it doesn't exist)
-      savedVideos.push(videoSaveData);
+      console.log('🎬 handleSaveVideo: Prepared video data for saving:', {
+        videoId: videoSaveData.videoId,
+        title: videoSaveData.title,
+        hasTranscript: !!videoSaveData.transcript,
+        transcriptLength: videoSaveData.transcript?.length || 0,
+        hasTimestampedTranscript: !!videoSaveData.timestampedTranscript,
+        timestampedTranscriptLength: videoSaveData.timestampedTranscript?.length || 0,
+        chatHistoryLength: videoSaveData.chatHistory.length,
+        hasSummary: !!videoSaveData.summary
+      });
 
-      // Save to storage
+      // Add new video
+      savedVideos.push(videoSaveData);
+      console.log('🎬 handleSaveVideo: Added video to array, new length:', savedVideos.length);
+
+      // Save to storage with error handling
+      console.log('🎬 handleSaveVideo: Saving to chrome.storage.local...');
       await chrome.storage.local.set({ savedVideos });
+      
+      console.log('🎬 handleSaveVideo: ✅ Video successfully saved to storage');
       
       // Update save button to show it's saved
       this.updateSaveButtonForSavedVideo();
       
+      // Show success indicator
+      this.showSaveSuccessIndicator();
+      
+      // Force refresh saved videos display if summaries manager exists
+      if (window.SummariesManager && window.summariesManager) {
+        console.log('🎬 handleSaveVideo: Refreshing summaries manager display...');
+        setTimeout(async () => {
+          await window.summariesManager.displaySavedContent();
+          console.log('🎬 handleSaveVideo: Summaries display refreshed');
+        }, 500);
+      } else {
+        console.log('🎬 handleSaveVideo: No summaries manager available for refresh');
+      }
+      
     } catch (error) {
-      console.error('Error saving video:', error);
+      console.error('🎬 handleSaveVideo: ❌ Error saving video:', error);
       alert('Error saving video data: ' + error.message);
+      
+      // Reset button on error
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fas fa-save"></i>';
+      }
     }
-  }
-
-  // Static method to load saved video
-  static async loadSavedVideo(videoId) {
-    const result = await chrome.storage.local.get(['savedVideos']);
-    const savedVideos = result.savedVideos || [];
-    return savedVideos.find(v => v.videoId === videoId);
   }
 }
 
