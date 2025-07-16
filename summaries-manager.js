@@ -27,19 +27,26 @@ class SummariesManager {
 
     savedSummaries.forEach((savedSummary, index) => {
       const summaryElement = document.createElement('div');
-      summaryElement.classList.add('summary');
+      summaryElement.classList.add('summary-card');
       summaryElement.innerHTML = `
-        <div class="summary__content">
-          <h3 class="summary__tags">${savedSummary.tags.join(', ')}</h3>
-          <div class="summary__text">${savedSummary.summary}</div>
+        <div class="summary-card-header">
+          <div class="summary-tags">
+            ${savedSummary.tags.map(tag => `<span class="summary-tag">${tag}</span>`).join('')}
+          </div>
+          <div class="summary-timestamp">
+            ${new Date(savedSummary.timestamp).toLocaleDateString()}
+          </div>
         </div>
-        <div class="summary__buttons">
-          <button class="summary__delete" data-index="${index}">
-            <span><i class="fas fa-trash"></i></span>
-          </button>
-          <button class="summary__copy" data-index="${index}">
-            <span><i class="fas fa-copy"></i></span>
-          </button>
+        <div class="summary-content">
+          <div class="summary-text">${savedSummary.summary}</div>
+          <div class="summary-actions">
+            <button class="summary-action-btn summary__copy" data-index="${index}" title="Copy summary">
+              <i class="fas fa-copy"></i>
+            </button>
+            <button class="summary-action-btn summary__delete delete" data-index="${index}" title="Delete summary">
+              <i class="fas fa-trash-alt"></i>
+            </button>
+          </div>
         </div>
       `;
       this.container.appendChild(summaryElement);
@@ -72,7 +79,7 @@ class SummariesManager {
     if (existingContent.trim()) {
       const separator = document.createElement('div');
       separator.className = 'section-separator';
-      separator.innerHTML = '<h3>Saved YouTube Videos</h3>';
+      separator.innerHTML = '<h3><i class="fas fa-video"></i> Saved YouTube Videos</h3>';
       this.container.appendChild(separator);
     }
     
@@ -91,14 +98,17 @@ class SummariesManager {
             <h4 class="video-title">${video.title}</h4>
             <p class="video-saved-date">Saved: ${new Date(video.savedAt).toLocaleDateString()}</p>
             <div class="video-actions">
-              <a href="${video.url}" target="_blank" class="video-link">
-                <i class="fab fa-youtube"></i> Watch
-              </a>
-              <button class="video-chat-btn" data-video-id="${video.videoId}">
-                <i class="fas fa-comments"></i> Chat
+              <button class="video-action-btn watch-btn" onclick="window.open('${video.url}', '_blank')" title="Watch on YouTube">
+                <i class="fab fa-youtube"></i>
+                <span>Watch</span>
               </button>
-              <button class="video-delete-btn" data-video-index="${index}">
-                <i class="fas fa-trash"></i>
+              <button class="video-action-btn chat-btn video-chat-btn" data-video-id="${video.videoId}" title="Open in Live Chat">
+                <i class="fas fa-comments"></i>
+                <span>Chat</span>
+              </button>
+              <button class="video-action-btn delete-btn video-delete-btn" data-video-index="${index}" title="Delete video">
+                <i class="fas fa-trash-alt"></i>
+                <span>Delete</span>
               </button>
             </div>
           </div>

@@ -187,7 +187,7 @@ function showManualPasteNotification(promptText = '') {
       <div style="flex: 1;">
         <div style="font-weight: 600; margin-bottom: 4px;">Auto-paste failed</div>
         <div style="font-size: 12px; opacity: 0.9; margin-bottom: 8px;">Please paste manually using Ctrl+V or Cmd+V</div>
-        ${promptText ? `<button onclick="navigator.clipboard.writeText(${JSON.stringify(promptText)}).then(() => this.textContent = 'Copied!')" style="background: #fff; color: #ef4444; border: 1px solid #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">Copy Text</button>` : ''}
+        ${promptText ? `<button class="copy-text-btn" data-text="${promptText.replace(/"/g, '&quot;')}" style="background: #fff; color: #ef4444; border: 1px solid #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;"><i class="fas fa-copy"></i> Copy Text</button>` : ''}
       </div>
     </div>
   `;
@@ -408,4 +408,21 @@ if (document.readyState === 'loading') {
 // Also try again when window loads
 window.addEventListener('load', () => {
   setTimeout(initChatGPTIntegration, 1000);
+});
+
+// Add click event listener for copy buttons (delegated)
+document.addEventListener('click', (event) => {
+  if (event.target.matches('.copy-text-btn')) {
+    const textToCopy = event.target.getAttribute('data-text');
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      // Change button text to "Copied!" temporarily
+      const originalText = event.target.innerHTML;
+      event.target.innerHTML = 'Copied!';
+      setTimeout(() => {
+        event.target.innerHTML = originalText;
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy text:', err);
+    });
+  }
 });

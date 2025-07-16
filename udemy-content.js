@@ -773,7 +773,7 @@ function createUdemySummarizeButton() {
     background: #f7f9fa;
     border-radius: 8px;
     border-left: 4px solid #a435f0;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 8px rgba(164, 53, 240, 0.2);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     cursor: move;
     user-select: none;
@@ -1240,9 +1240,8 @@ function displayUdemySummary(summary, topic) {
     </div>
     <p style="margin: 0; color: #1c1d1f; line-height: 1.5; font-size: 14px;">${summary}</p>
     <div style="margin-top: 12px;">
-      <button onclick="navigator.clipboard.writeText('${summary.replace(/'/g, "\\'")}').then(() => { this.textContent = 'Copied!'; setTimeout(() => this.textContent = 'Copy Summary', 2000); })" 
-              style="background: #a435f0; color: white; border: none; padding: 6px 12px; border-radius: 18px; font-size: 12px; cursor: pointer; margin-right: 8px;">
-        Copy Summary
+      <button class="copy-summary-btn" data-summary="${summary.replace(/'/g, "\\'")}">
+        <i class="fas fa-copy"></i> Copy Summary
       </button>
     </div>
   `;

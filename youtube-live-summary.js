@@ -262,6 +262,19 @@ class YouTubeLiveSummary {
         this.handleSaveVideo();
       });
     }
+
+    // Set up event delegation for dynamically added copy buttons
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) {
+      chatMessages.addEventListener('click', (e) => {
+        if (e.target.closest('.copy-message-btn')) {
+          e.preventDefault();
+          const button = e.target.closest('.copy-message-btn');
+          const message = button.getAttribute('data-message');
+          this.handleCopyMessage(message, button);
+        }
+      });
+    }
   }
 
   async startInitialSummary() {
@@ -570,6 +583,19 @@ class YouTubeLiveSummary {
       }
     }
     
+    // Add recent chat history for context (limit to last 5 exchanges to avoid token limits)
+    if (this.chatHistory && this.chatHistory.length > 0 && !isAutomatic) {
+      prompt += `Previous Conversation:\n`;
+      const recentHistory = this.chatHistory.slice(-5); // Get last 5 exchanges
+      recentHistory.forEach(chat => {
+        if (chat.type !== 'summary') { // Don't repeat the summary in context
+          prompt += `User: ${chat.message}\n`;
+        }
+        prompt += `Assistant: ${chat.response}\n\n`;
+      });
+      prompt += `---\n\n`;
+    }
+    
     if (isAutomatic) {
       prompt += userMessage;
     } else {
@@ -777,8 +803,9 @@ Based on the video content above, please provide a detailed and helpful response
         </div>
         <div class="message-content">${this.formatMessage(message)}</div>
         <div class="message-actions">
-          <button onclick="navigator.clipboard.writeText('${message.replace(/'/g, "\\'")}')">
+          <button class="copy-message-btn" data-message="${message.replace(/'/g, "\\'")}">
             <i class="fas fa-copy"></i>
+            Copy
           </button>
         </div>
       `;
@@ -1004,6 +1031,87 @@ Based on the video content above, please provide a detailed and helpful response
       setTimeout(() => {
         if (confirmation.parentElement) {
           confirmation.remove();
+        }
+      }, 300);
+    }, 2000);
+  }
+
+  // Handle copying message to clipboard
+  async handleCopyMessage(message, button) {
+    try {
+      await navigator.clipboard.writeText(message);
+      
+      // Show success feedback
+      const originalHtml = button.innerHTML;
+      button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+      button.style.background = '#4caf50';
+      
+      setTimeout(() => {
+        button.innerHTML = originalHtml;
+        button.style.background = '';
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Failed to copy message:', error);
+      // Fallback for browsers that don't support clipboard API
+      const textArea = document.createElement('textarea');
+      textArea.value = message;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        setTimeout(() => {
+          button.innerHTML = '<i class="fas fa-copy"></i> Copy';
+        }, 2000);
+      } catch (fallbackError) {
+        console.error('Fallback copy failed:', fallbackError);
+      }
+      document.body.removeChild(textArea);
+    }
+  }
+
+  // Show success indicator when video is saved
+  showSaveSuccessIndicator() {
+    const indicator = document.createElement('div');
+    indicator.id = 'saveSuccessIndicator';
+    indicator.innerHTML = `
+      <i class="fas fa-check-circle"></i>
+      <span>Video saved successfully!</span>
+    `;
+    indicator.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4caf50;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 10000;
+      opacity: 0;
+      transform: translateY(-10px);
+      transition: all 0.3s ease;
+    `;
+    
+    document.body.appendChild(indicator);
+    
+    // Animate in
+    setTimeout(() => {
+      indicator.style.opacity = '1';
+      indicator.style.transform = 'translateY(0)';
+    }, 50);
+    
+    // Animate out and remove
+    setTimeout(() => {
+      indicator.style.opacity = '0';
+      indicator.style.transform = 'translateY(-10px)';
+      setTimeout(() => {
+        if (indicator.parentElement) {
+          indicator.remove();
         }
       }, 300);
     }, 2000);

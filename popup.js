@@ -651,7 +651,7 @@ async function forceSwitchToLiveTab() {
       console.log('🔄 FORCE SWITCH: Found required elements, switching tabs...');
       
       // Log current state before switching
-      const allTabs = document.querySelectorAll('.menu__item');
+      const allTabs = document.querySelectorAll('.nav-tab, .menu__item');
       const allPages = document.querySelectorAll('.page');
       
       console.log('🔄 FORCE SWITCH: Current tab states:');
@@ -664,7 +664,7 @@ async function forceSwitchToLiveTab() {
         console.log(`  Page ${index} (${page.id}): active=${page.classList.contains('active-page')}`);
       });
       
-      // Remove active from all tabs and pages
+      // Remove active from all tabs and pages - FIXED: More thorough cleanup
       console.log('🔄 FORCE SWITCH: Removing active classes...');
       allTabs.forEach(tab => {
         if (tab.classList.contains('active')) {

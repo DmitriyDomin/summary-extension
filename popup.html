@@ -1,219 +1,484 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <link rel="stylesheet" href="custom-select.css">
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Summary Extension</title>
+    <title>Confetti AI</title>
+    
+    <!-- Modern Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="custom-select.css">
 </head>
 <body>
-<div class="header">
-    <h1 id="summarizeHeader" data-i18n="extensionName">Summary Extension</h1>
-    <div class="language-picker custom-select">
-        <select id="userLanguage">
-            <option value="en" class="option-en language-option"></option>
-            <option value="es" class="option-es language-option"></option>
-            <option value="fr" class="option-fr language-option"></option>
-            <option value="de" class="option-de language-option"></option>
-            <option value="it" class="option-it language-option"></option>
-            <option value="pt" class="option-pt language-option"></option>
-            <option value="ua" class="option-ua language-option"></option>
-            <option value="ru" class="option-ru language-option"></option>
-        </select>
-    </div>
-</div>
-<div class="menu">
-    <div class="menu__home menu__item active" id="menuHome">Home</div>
-    <div class="menu__live menu__item" id="menuLive">Live Summary</div>
-    <div class="menu__summaries menu__item" id="menuSummaries">Saved summaries</div>
-    <div class="menu__settings menu__item" id="menuSettings">Settings</div>
-</div>
-<div class="home-page page active-page" id="homePage">
-    <div class="target-language-container">
-        <label for="targetLanguage" data-i18n="targetLanguage" class="target-language-label">Translate to</label>
-        <div class="custom-select target-language">
-            <select id="targetLanguage" >
-                <option value="none" id="noTranslation" data-i18n="noTranslation">No translation</option>
-                <option value="english" data-i18n="english" >English</option>
-                <option value="spanish" data-i18n="spanish">Spanish</option>
-                <option value="german" data-i18n="german">German</option>
-                <option value="french" data-i18n="french">French</option>
-                <option value="italian" data-i18n="italian">Italian</option>
-                <option value="portuguese" data-i18n="portuguese">Portuguese</option>
-                <option value="russian" data-i18n="russian">Russian</option>
-                <option value="ukrainian" data-i18n="ukrainian">Ukrainian</option>
-            </select>
-        </div>
+    <!-- Main Container -->
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="header-logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-sparkles"></i>
+                    </div>
+                    <div class="logo-text">
+                        <h1>Confetti</h1>
+                        <span class="logo-subtitle">AI Summary</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-button" id="languageToggle" title="Language">
+                        <i class="fas fa-globe"></i>
+                    </button>
+                    <button class="icon-button" id="userProfile" title="Profile">
+                        <div class="user-avatar">
+                            <span>D</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="navigation-tabs">
+            <button class="nav-tab active" id="menuHome" data-page="homePage">
+                <i class="fas fa-home"></i>
+                <span>Summary</span>
+            </button>
+            <button class="nav-tab" id="menuLive" data-page="liveSummaryPage">
+                <i class="fas fa-play-circle"></i>
+                <span>Live Chat</span>
+            </button>
+            <button class="nav-tab" id="menuSummaries" data-page="summariesPage">
+                <i class="fas fa-bookmark"></i>
+                <span>Saved</span>
+            </button>
+            <button class="nav-tab" id="menuSettings" data-page="settingsPage">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Home Page -->
+            <div class="page active-page" id="homePage">
+                <!-- Quick Settings Card -->
+                <div class="content-card settings-card">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-sliders-h"></i>
+                            Quick Settings
+                        </h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="setting-row">
+                            <label>Target Language</label>
+                            <div class="modern-select">
+                                <select id="targetLanguage">
+                                    <option value="none">No translation</option>
+                                    <option value="english">🇺🇸 English</option>
+                                    <option value="spanish">🇪🇸 Spanish</option>
+                                    <option value="german">🇩🇪 German</option>
+                                    <option value="french">🇫🇷 French</option>
+                                    <option value="italian">🇮🇹 Italian</option>
+                                    <option value="portuguese">🇵🇹 Portuguese</option>
+                                    <option value="russian">🇷🇺 Russian</option>
+                                    <option value="ukrainian">🇺🇦 Ukrainian</option>
+                                </select>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+                        <div class="setting-row">
+                            <label>Summary Length</label>
+                            <div class="modern-select">
+                                <select id="summaryLength">
+                                    <option value="short">✨ Short</option>
+                                    <option value="medium">📄 Medium</option>
+                                    <option value="long">📚 Long</option>
+                                </select>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Action Card -->
+                <div class="content-card action-card">
+                    <div class="card-content">
+                        <div class="action-header">
+                            <div class="action-icon">
+                                <i class="fas fa-magic"></i>
+                            </div>
+                            <div class="action-text">
+                                <h3>Summarize Current Page</h3>
+                                <p>Get an AI-powered summary of this webpage</p>
+                            </div>
+                        </div>
+                        <button id="summarizeWebpageButton" class="primary-button">
+                            <i class="fas fa-bolt"></i>
+                            <span>Summarize Now</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Text Input Card -->
+                <div class="content-card input-card">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-edit"></i>
+                            Custom Text Summary
+                        </h3>
+                        <button class="toggle-button" id="instantSummaryToggle">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
+                    <div class="card-content expandable" id="textSummaryContent">
+                        <div class="input-group">
+                            <textarea id="instantSummaryTextarea" placeholder="Paste any text here to get an instant summary..." rows="4"></textarea>
+                            <button id="instantSummaryButton" class="action-button" disabled>
+                                <i class="fas fa-paper-plane"></i>
+                                Summarize
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Save Summary Card -->
+                <div class="content-card save-card">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-save"></i>
+                            Save Summary
+                        </h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="input-group">
+                            <label for="tags">Tags (comma separated)</label>
+                            <input type="text" id="tags" placeholder="e.g., youtube, tutorial, programming" class="text-input">
+                        </div>
+                        <div class="button-group">
+                            <button id="saveButton" class="primary-button" disabled>
+                                <div class="button-content">
+                                    <i class="fas fa-bookmark"></i>
+                                    <span>Save Summary</span>
+                                </div>
+                                <div class="button-loader">
+                                    <div class="spinner"></div>
+                                </div>
+                            </button>
+                            <div class="status-indicators">
+                                <div class="status-icon success" id="savedContentIcon">
+                                    <i class="fas fa-check"></i>
+                                </div>
+                                <div class="status-icon loading" id="loadingContentIcon">
+                                    <div class="spinner"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="error-message" id="saveButtonError">
+                            Summary with these tags already exists
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Share Actions -->
+                <div class="content-card share-card">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-share-alt"></i>
+                            Share Summary
+                        </h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="share-buttons">
+                            <button id="shareEmail" class="share-button email">
+                                <i class="fas fa-envelope"></i>
+                                <span>Email</span>
+                            </button>
+                            <button id="shareTwitter" class="share-button twitter">
+                                <i class="fab fa-twitter"></i>
+                                <span>Twitter</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Summary Page -->
+            <div class="page" id="liveSummaryPage">
+                <div class="live-container">
+                    <!-- Video Info Card -->
+                    <div class="content-card video-info-card" id="videoInfo" style="display: none;">
+                        <div class="video-header">
+                            <div class="video-thumbnail">
+                                <img id="videoThumbnail" src="" alt="Video thumbnail">
+                                <div class="play-overlay">
+                                    <i class="fas fa-play"></i>
+                                </div>
+                            </div>
+                            <div class="video-details">
+                                <h3 id="videoTitle">Video Title</h3>
+                                <a id="videoLink" href="" target="_blank" class="video-link">
+                                    <i class="fas fa-external-link-alt"></i>
+                                    Watch on YouTube
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Chat Container -->
+                    <div class="chat-container">
+                        <div class="chat-messages" id="chatMessages"></div>
+                        
+                        <!-- Quick Actions -->
+                        <div class="quick-actions">
+                            <button id="bulletPointsBtn" class="quick-action-btn" title="Generate bullet points">
+                                <i class="fas fa-list-ul"></i>
+                            </button>
+                            <button id="questionsBtn" class="quick-action-btn" title="Generate questions">
+                                <i class="fas fa-question-circle"></i>
+                            </button>
+                            <button id="saveVideoBtn" class="quick-action-btn" title="Save video data">
+                                <i class="fas fa-bookmark"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- Chat Input -->
+                        <div class="chat-input-container">
+                            <div class="input-wrapper">
+                                <input type="text" id="chatInput" placeholder="Ask anything about the video...">
+                                <button id="sendMessageBtn" class="send-button">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Saved Summaries Page -->
+            <div class="page" id="summariesPage">
+                <div class="page-header">
+                    <h2>
+                        <i class="fas fa-bookmark"></i>
+                        Saved Summaries
+                    </h2>
+                    <div class="search-container">
+                        <div class="search-wrapper">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="summaryInput" placeholder="Search summaries...">
+                        </div>
+                    </div>
+                </div>
+                <div class="summaries-grid" id="savedSummaries"></div>
+            </div>
+
+            <!-- Settings Page -->
+            <div class="page" id="settingsPage">
+                <div class="page-header">
+                    <h2>
+                        <i class="fas fa-cog"></i>
+                        Settings
+                    </h2>
+                </div>
+
+                <!-- API Configuration -->
+                <div class="content-card settings-card">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-key"></i>
+                            API Configuration
+                        </h3>
+                    </div>
+                    <div class="card-content">
+                        <!-- OpenAI API Key -->
+                        <div class="api-section">
+                            <div class="api-header">
+                                <div class="api-icon openai">
+                                    <i class="fas fa-brain"></i>
+                                </div>
+                                <div class="api-info">
+                                    <h4>OpenAI API Key</h4>
+                                    <p>For GPT-4 and other OpenAI models</p>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <div class="password-input">
+                                    <input type="password" id="apiKeyInput" placeholder="sk-..." class="text-input">
+                                    <button id="toggleApiKey" class="toggle-password" type="button">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="api-actions">
+                                    <button id="saveApiKey" class="action-button">Save</button>
+                                    <button id="testApiKey" class="action-button test">Test</button>
+                                </div>
+                                <div class="api-status" id="apiKeyStatus"></div>
+                            </div>
+                        </div>
+
+                        <!-- Google AI API Key -->
+                        <div class="api-section">
+                            <div class="api-header">
+                                <div class="api-icon google">
+                                    <i class="fab fa-google"></i>
+                                </div>
+                                <div class="api-info">
+                                    <h4>Google AI API Key</h4>
+                                    <p>For Gemini and other Google AI models</p>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <div class="password-input">
+                                    <input type="password" id="googleApiKeyInput" placeholder="AI..." class="text-input">
+                                    <button id="toggleGoogleApiKey" class="toggle-password" type="button">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="api-actions">
+                                    <button id="saveGoogleApiKey" class="action-button">Save</button>
+                                    <button id="testGoogleApiKey" class="action-button test">Test</button>
+                                </div>
+                                <div class="api-status" id="googleApiKeyStatus"></div>
+                            </div>
+                        </div>
+
+                        <!-- AI Provider Selection -->
+                        <div class="setting-row">
+                            <label>Default AI Provider</label>
+                            <div class="modern-select">
+                                <select id="aiProvider">
+                                    <option value="openai">🧠 OpenAI (GPT)</option>
+                                    <option value="google">🌟 Google AI (Gemini)</option>
+                                </select>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Extension Settings -->
+                <div class="content-card settings-card">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-sliders-h"></i>
+                            Extension Settings
+                        </h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="toggle-setting">
+                            <div class="toggle-info">
+                                <h4>Auto-summarize YouTube videos</h4>
+                                <p>Automatically generate summaries when watching YouTube</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="autoSummarizeYoutube">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="toggle-setting">
+                            <div class="toggle-info">
+                                <h4>Show inline summary buttons</h4>
+                                <p>Display summary buttons on supported websites</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="showInlineButtons">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Privacy & Security -->
+                <div class="content-card settings-card">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-shield-alt"></i>
+                            Privacy & Security
+                        </h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="privacy-note">
+                            <div class="privacy-icon">
+                                <i class="fas fa-lock"></i>
+                            </div>
+                            <div class="privacy-text">
+                                <p>Your API keys are stored locally in your browser and never sent to our servers. All communication is directly between your browser and the respective AI provider's servers.</p>
+                            </div>
+                        </div>
+                        <button id="clearAllData" class="danger-button">
+                            <i class="fas fa-trash-alt"></i>
+                            Clear All Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
 
-    <div class="summary-length-container">
-        <label for="summaryLength" id="summaryLengthLabel" data-i18n="summaryLengthLabel">Summary Length:</label>
-        <div class="custom-select summary-length">
-            <select id="summaryLength">
-                <option value="short" id="shortText" data-i18n="shortText">Short</option>
-                <option value="medium" id="mediumText" data-i18n="mediumText">Medium</option>
-                <option value="long" id="longText" data-i18n="longText">Long</option>
-            </select>
-        </div>
-    </div>
-
-    <button id="summarizeWebpageButton" data-i18n="summarizeWebpageButton" class="summarize-webpage button">Summarize Webpage</button>
-
-    <div class="instant-summary-container">
-        <div class="instant-summary-toggle closed" id="instantSummaryToggle">Insert text to summarize</div>
-        <div class="instant-summary">
-            <textarea name="instantSummaryTextarea" class="instant-summary__textarea" id="instantSummaryTextarea"></textarea>
-            <button class="instant-summary__button" id="instantSummaryButton" disabled>
-                <i class="fas fa-redo"></i>
-            </button>
-        </div>
-    </div>
-    <div class="save-content-container">
-        <div class="save-content-tags">
-            <label for="tags" id="tagsLabel" data-i18n="tagsLabel">Tags:</label>
-            <input type="text" id="tags" data-i18n="tags" placeholder="Enter tags separated by commas" class="save-content-input">
-        </div>
-        <div class="save-button-container">
-            <button id="saveButton" data-i18n="saveButton" class="save-content-button button" disabled>Save Summary</button>
-            <i class="far fa-check-circle save-content__icon" id="savedContentIcon"></i>
-            <i class="fas fa-spinner save-content__icon" id="loadingContentIcon"></i>
-            <p id="saveButtonError" class="save-content__error">Summary with these tags already exists</p>
-        </div>
-    </div>
-    <div class="share-container">
-        <button id="shareEmail" data-i18n="shareEmail"  class="button-email button">Share via Email</button>
-        <button id="shareTwitter" data-i18n="shareTwitter" class="button-twitter button">Share on Twitter</button>
-    </div>
-</div>
-<div class="summaries-page page" id="summariesPage">
-    <div class="search">
-        <input type="text" class="search__input" id='summaryInput' placeholder="Enter the text">
-        <i id="savedButtonIcon" class="fas fa-search search__icon"></i>
-    </div>
-    <div id="savedSummaries"></div>
-</div>
-<div class="live-summary-page page" id="liveSummaryPage">
-    <div class="video-info" id="videoInfo" style="display: none;">
-        <div class="video-thumbnail">
-            <img id="videoThumbnail" src="" alt="Video thumbnail">
-        </div>
-        <div class="video-details">
-            <h3 id="videoTitle">Video Title</h3>
-            <a id="videoLink" href="" target="_blank">Watch on YouTube</a>
-        </div>
-    </div>
-    
-    <div class="live-chat-container">
-        <div class="chat-messages" id="chatMessages"></div>
-        <div class="quick-actions">
-            <button id="bulletPointsBtn" class="quick-action-btn" title="Generate bullet points">
-                <i class="fas fa-list-ul"></i>
-            </button>
-            <button id="questionsBtn" class="quick-action-btn" title="Generate questions">
-                <i class="fas fa-question-circle"></i>
-            </button>
-            <button id="saveVideoBtn" class="quick-action-btn" title="Save video data">
-                <i class="fas fa-save"></i>
-            </button>
-        </div>
-        <div class="chat-input-container">
-            <input type="text" id="chatInput" placeholder="Ask anything about the video...">
-            <button id="sendMessageBtn">
-                <i class="fas fa-paper-plane"></i>
-            </button>
-        </div>
-    </div>
-</div>
-<div class="settings-page page" id="settingsPage">
-    <div class="api-key-container">
-        <h3>API Configuration</h3>
-        
-        <!-- OpenAI API Key Section -->
-        <div class="api-key-input-container">
-            <label for="apiKeyInput">OpenAI API Key:</label>
-            <div style="position: relative;">
-                <input type="password" id="apiKeyInput" placeholder="sk-..." class="api-key-input">
-                <button id="toggleApiKey" class="toggle-password-btn" type="button">
-                    <i class="fas fa-eye"></i>
+    <!-- Language Selection Modal -->
+    <div class="modal-overlay" id="languageModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Select Language</h3>
+                <button class="close-modal" id="closeLanguageModal">
+                    <i class="fas fa-times"></i>
                 </button>
             </div>
-            <small class="api-key-help">
-                Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Platform</a>
-            </small>
-        </div>
-        <div class="api-key-actions">
-            <button id="saveApiKey" class="button">Save OpenAI Key</button>
-            <button id="testApiKey" class="button button-test">Test OpenAI</button>
-            <div id="apiKeyStatus" class="api-status"></div>
-        </div>
-
-        <!-- Google Gemini API Key Section -->
-        <div class="api-key-input-container" style="margin-top: 20px;">
-            <label for="googleApiKeyInput">Google AI API Key (Gemini):</label>
-            <div style="position: relative;">
-                <input type="password" id="googleApiKeyInput" placeholder="AI..." class="api-key-input">
-                <button id="toggleGoogleApiKey" class="toggle-password-btn" type="button">
-                    <i class="fas fa-eye"></i>
+            <div class="language-grid">
+                <button class="language-option" data-lang="en">
+                    <img src="images/flags/en.svg" alt="English">
+                    <span>English</span>
+                </button>
+                <button class="language-option" data-lang="es">
+                    <img src="images/flags/es.svg" alt="Spanish">
+                    <span>Español</span>
+                </button>
+                <button class="language-option" data-lang="fr">
+                    <img src="images/flags/fr.svg" alt="French">
+                    <span>Français</span>
+                </button>
+                <button class="language-option" data-lang="de">
+                    <img src="images/flags/de.svg" alt="German">
+                    <span>Deutsch</span>
+                </button>
+                <button class="language-option" data-lang="it">
+                    <img src="images/flags/it.svg" alt="Italian">
+                    <span>Italiano</span>
+                </button>
+                <button class="language-option" data-lang="pt">
+                    <img src="images/flags/pt.svg" alt="Portuguese">
+                    <span>Português</span>
+                </button>
+                <button class="language-option" data-lang="ru">
+                    <img src="images/flags/ru.svg" alt="Russian">
+                    <span>Русский</span>
+                </button>
+                <button class="language-option" data-lang="ua">
+                    <img src="images/flags/ua.svg" alt="Ukrainian">
+                    <span>Українська</span>
                 </button>
             </div>
-            <small class="api-key-help">
-                Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>
-            </small>
-        </div>
-        <div class="api-key-actions">
-            <button id="saveGoogleApiKey" class="button">Save Google AI Key</button>
-            <button id="testGoogleApiKey" class="button button-test">Test Gemini</button>
-            <div id="googleApiKeyStatus" class="api-status"></div>
-        </div>
-
-        <!-- AI Provider Selection -->
-        <div class="api-provider-container" style="margin-top: 20px;">
-            <label for="aiProvider">Default AI Provider:</label>
-            <div class="custom-select">
-                <select id="aiProvider">
-                    <option value="openai">OpenAI (GPT)</option>
-                    <option value="google">Google AI (Gemini)</option>
-                </select>
-            </div>
         </div>
     </div>
-    
-    <div class="settings-section">
-        <h3>Extension Settings</h3>
-        <div class="setting-item">
-            <label>
-                <input type="checkbox" id="autoSummarizeYoutube"> 
-                Auto-summarize YouTube videos
-            </label>
-        </div>
-        <div class="setting-item">
-            <label>
-                <input type="checkbox" id="showInlineButtons"> 
-                Show inline summary buttons on websites
-            </label>
-        </div>
-    </div>
-    
-    <div class="settings-section">
-        <h3>Privacy & Security</h3>
-        <p class="privacy-note">
-            🔒 Your API keys are stored locally in your browser and never sent to our servers. 
-            All communication is directly between your browser and the respective AI provider's servers.
-        </p>
-        <button id="clearAllData" class="button button-danger">Clear All Data</button>
-    </div>
-</div>
 
-<!-- Debug info -->
-<div id="debugInfo" style="position: fixed; bottom: 10px; left: 10px; background: #000; color: #0f0; padding: 5px; font-size: 10px; border-radius: 3px; z-index: 99999;">
-    Debug: Starting...
-</div>
+    <!-- Hidden elements for backward compatibility -->
+    <select id="userLanguage" style="display: none;">
+        <option value="en">English</option>
+        <option value="es">Spanish</option>
+        <option value="fr">French</option>
+        <option value="de">German</option>
+        <option value="it">Italian</option>
+        <option value="pt">Portuguese</option>
+        <option value="ua">Ukrainian</option>
+        <option value="ru">Russian</option>
+    </select>
 
-<!-- Load tab switcher first for immediate functionality -->
-<script src="tab-switcher.js"></script>
-<script src="load-scripts.js"></script>
-
+    <!-- Scripts -->
+    <script src="tab-switcher.js"></script>
+    <script src="load-scripts.js"></script>
 </body>
 </html>
