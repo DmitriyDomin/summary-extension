@@ -1,72 +1,124 @@
 const lengthMap = { short: 50, medium: 100, long: 200 };
 const TARGET_LANGUAGE = 'targetLanguage';
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log(1234);
+  console.log('Content script received message:', request);
   importStyles();
+  
   if (request.action === 'summarize' || request.action === 'summarizeWebpage') {
-    importStyles();
-    const apiKey = 'REDACTED_OPENAI_API_KEY';
-    chrome.storage.local.get(TARGET_LANGUAGE).then((res) => {
-      const targetLanguage = res[TARGET_LANGUAGE];
-      chrome.storage.local.get('textLength').then((res2) => {
-        const length = lengthMap[res2.textLength] || lengthMap.short;
-        const prompt =
-          request.action === 'summarize'
-            ? `${request.text} \n summarize the following text to ${length} words, give it a title in () and the original language in []`
-            : `${document.URL} \n summarize this webpage to ${length} words,  give it a title in () and the original language in []`;
-        displayLoading();
-        generateSummary(apiKey, prompt).then((summary) => {
-          let [updatedSummary, originalLang] = getLanguage(summary);
-          let topic = '';
-          if (targetLanguage && originalLang.toLowerCase() !== targetLanguage) {
-            const translationPrompt = `${updatedSummary} \n translate it to ${targetLanguage} including the text in ()`;
-            generateSummary(apiKey, translationPrompt).then((updatedSummary) => {
-              updatedSummary = updatedSummary;
-            });
-          }
-          [updatedSummary, topic] = parseText(updatedSummary);
-          chrome.runtime.sendMessage({ action: "updateTags", data: topic });
-          displaySummary(updatedSummary, topic);
-          sendResponse(updatedSummary);
-        });
-      });
-    });
-    return true;
+    handleSummarization(request, sendResponse);
+    return true; // Keep channel open for async response
   } else if (request.action === 'getSummary') {
     const summaryDiv = document.getElementById('summaryDiv');
     if (summaryDiv) {
       const summaryContent = summaryDiv.querySelector('#summaryContent');
-      console.log(summaryContent);
-      sendResponse(summaryContent.textContent);
+      sendResponse(summaryContent ? summaryContent.textContent : null);
     } else {
       sendResponse(null);
     }
   } else if (request.action === 'getSummaryTopic') {
-    sendResponse({ value: document.getElementsByClassName('summary-topic')[0]?.innerHTML });
+    const topicElement = document.getElementsByClassName('summary-topic')[0];
+    sendResponse({ value: topicElement ? topicElement.innerHTML : null });
   }
-  // else if (request.action === 'summarizeWebpage') {
-  //   const webpageText = document.body.innerText;
-  //   const apiKey = 'REDACTED_OPENAI_API_KEY'; // Replace this with your GPT-4 API key
-  //   const prompt = `${document.URL} \n summarize this webpage to 50 words`;
-  //   const summary = await generateSummary(apiKey, prompt);
-  //   displaySummary(summary);
-  // }
-  console.log('RETURN');
-  return true; // Required for async sendResponse
+  
+  return true;
 });
 
-async function autoSummarize() {
-  const apiKey = 'REDACTED_OPENAI_API_KEY'; // Replace this with your GPT-4 API key
-  const summaryLength = 'medium'; // You can set a default summary length for auto-summarize mode
-  const summary = await generateSummary(apiKey, document.body.innerText, summaryLength);
-  alert(`Auto-summarized content:\n\n${summary}`);
+// Handle summarization requests
+async function handleSummarization(request, sendResponse) {
+  try {
+    importStyles();
+    displayLoading();
+    
+    // Get user preferences
+    const targetLanguage = await getStorageValue(TARGET_LANGUAGE);
+    const textLength = await getStorageValue('textLength') || 'medium';
+    const length = lengthMap[textLength] || lengthMap.medium;
+    
+    // Prepare content and prompt
+    let content, prompt;
+    if (request.action === 'summarize') {
+      content = request.text;
+      prompt = `${content}\n\nSummarize the following text to approximately ${length} words. Include a clear title in parentheses () and indicate the original language in square brackets [].`;
+    } else {
+      content = document.body.innerText;
+      const title = document.title || 'Web Page';
+      const url = document.URL;
+      prompt = `Title: ${title}\nURL: ${url}\nContent: ${content}\n\nSummarize this webpage content to approximately ${length} words. Include a clear title in parentheses () and indicate the original language in square brackets [].`;
+    }
+    
+    // Generate summary using secure API
+    let summary = await generateSecureSummary(prompt, textLength);
+    let [updatedSummary, originalLang] = getLanguage(summary);
+    let topic = '';
+    
+    // Handle translation if needed
+    if (targetLanguage && targetLanguage !== 'none' && originalLang.toLowerCase() !== targetLanguage.toLowerCase()) {
+      try {
+        updatedSummary = await translateSecurely(updatedSummary, targetLanguage);
+      } catch (translationError) {
+        console.warn('Translation failed, using original summary:', translationError);
+      }
+    }
+    
+    // Parse topic from summary
+    [updatedSummary, topic] = parseText(updatedSummary);
+    
+    // Update popup with topic
+    chrome.runtime.sendMessage({ action: "updateTags", data: topic });
+    
+    // Display summary
+    displaySummary(updatedSummary, topic);
+    sendResponse(updatedSummary);
+    
+  } catch (error) {
+    console.error('Summarization error:', error);
+    displayError(error.message);
+    sendResponse({ error: error.message });
+  }
 }
 
-chrome.storage.sync.get('autoSummarize', (data) => {
-  if (data.autoSummarize) {
-    autoSummarize();
-  }
-});
+// Helper function to get storage values
+function getStorageValue(key) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([key], (result) => {
+      resolve(result[key]);
+    });
+  });
+}
+
+// Display error message
+function displayError(message) {
+  const summaryDiv = document.getElementById('summaryDiv') || createSummaryContainer();
+  
+  summaryDiv.innerHTML = '';
+  summaryDiv.classList.remove('loading');
+  
+  const closeButton = document.createElement('button');
+  closeButton.textContent = '+';
+  closeButton.classList.add('close-button-SE');
+  closeButton.onclick = () => summaryDiv.remove();
+  
+  const errorContent = document.createElement('div');
+  errorContent.style.cssText = 'color: #d32f2f; padding: 15px; text-align: center;';
+  errorContent.innerHTML = `
+    <h3 style="margin: 0 0 10px 0;">⚠️ Error</h3>
+    <p style="margin: 0;">${message}</p>
+  `;
+  
+  summaryDiv.appendChild(closeButton);
+  summaryDiv.appendChild(errorContent);
+}
+
+// Create summary container
+function createSummaryContainer() {
+  const summaryDiv = document.createElement('div');
+  summaryDiv.setAttribute('id', 'summaryDiv');
+  summaryDiv.classList.add('summary-container-SE');
+  dragElement(summaryDiv);
+  document.body.appendChild(summaryDiv);
+  return summaryDiv;
+}
 
 function displayLoading() {
   let summaryDiv = document.getElementById('summaryDiv');

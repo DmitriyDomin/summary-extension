@@ -5,6 +5,7 @@ module.exports = {
   entry: {
     popup: './popup.js',
     background: './background.js',
+    'youtube-live-summary': './youtube-live-summary.js',
     // content: './content.js',
     // customSelect: './custom-select.js',
     // load: './load-scripts.js',

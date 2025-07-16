@@ -12,9 +12,9 @@ async function generateSummary(apiKey, prompt, summaryLength = 'short', language
     body: JSON.stringify({
       messages: [{ role: 'user', content: prompt }],
       n: 1,
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o-mini',
       stop: null,
-      temperature: 0.3
+      temperature: 0
     })
   });
 

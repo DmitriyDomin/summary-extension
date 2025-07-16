@@ -10,7 +10,7 @@
 </head>
 <body>
 <div class="header">
-    <h1 id="summarizeHeader" data-i18n="extensionName"></h1>
+    <h1 id="summarizeHeader" data-i18n="extensionName">Summary Extension</h1>
     <div class="language-picker custom-select">
         <select id="userLanguage">
             <option value="en" class="option-en language-option"></option>
@@ -26,7 +26,9 @@
 </div>
 <div class="menu">
     <div class="menu__home menu__item active" id="menuHome">Home</div>
+    <div class="menu__live menu__item" id="menuLive">Live Summary</div>
     <div class="menu__summaries menu__item" id="menuSummaries">Saved summaries</div>
+    <div class="menu__settings menu__item" id="menuSettings">Settings</div>
 </div>
 <div class="home-page page active-page" id="homePage">
     <div class="target-language-container">
@@ -57,7 +59,7 @@
         </div>
     </div>
 
-    <button id="summarizeWebpageButton" data-i18n="summarizeWebpageButton" class="summarize-webpage button"></button>
+    <button id="summarizeWebpageButton" data-i18n="summarizeWebpageButton" class="summarize-webpage button">Summarize Webpage</button>
 
     <div class="instant-summary-container">
         <div class="instant-summary-toggle closed" id="instantSummaryToggle">Insert text to summarize</div>
@@ -92,8 +94,126 @@
     </div>
     <div id="savedSummaries"></div>
 </div>
+<div class="live-summary-page page" id="liveSummaryPage">
+    <div class="video-info" id="videoInfo" style="display: none;">
+        <div class="video-thumbnail">
+            <img id="videoThumbnail" src="" alt="Video thumbnail">
+        </div>
+        <div class="video-details">
+            <h3 id="videoTitle">Video Title</h3>
+            <a id="videoLink" href="" target="_blank">Watch on YouTube</a>
+        </div>
+    </div>
+    
+    <div class="live-chat-container">
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="quick-actions">
+            <button id="bulletPointsBtn" class="quick-action-btn" title="Generate bullet points">
+                <i class="fas fa-list-ul"></i>
+            </button>
+            <button id="questionsBtn" class="quick-action-btn" title="Generate questions">
+                <i class="fas fa-question-circle"></i>
+            </button>
+            <button id="saveVideoBtn" class="quick-action-btn" title="Save video data">
+                <i class="fas fa-save"></i>
+            </button>
+        </div>
+        <div class="chat-input-container">
+            <input type="text" id="chatInput" placeholder="Ask anything about the video...">
+            <button id="sendMessageBtn">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+</div>
+<div class="settings-page page" id="settingsPage">
+    <div class="api-key-container">
+        <h3>API Configuration</h3>
+        
+        <!-- OpenAI API Key Section -->
+        <div class="api-key-input-container">
+            <label for="apiKeyInput">OpenAI API Key:</label>
+            <div style="position: relative;">
+                <input type="password" id="apiKeyInput" placeholder="sk-..." class="api-key-input">
+                <button id="toggleApiKey" class="toggle-password-btn" type="button">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
+            <small class="api-key-help">
+                Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Platform</a>
+            </small>
+        </div>
+        <div class="api-key-actions">
+            <button id="saveApiKey" class="button">Save OpenAI Key</button>
+            <button id="testApiKey" class="button button-test">Test OpenAI</button>
+            <div id="apiKeyStatus" class="api-status"></div>
+        </div>
+
+        <!-- Google Gemini API Key Section -->
+        <div class="api-key-input-container" style="margin-top: 20px;">
+            <label for="googleApiKeyInput">Google AI API Key (Gemini):</label>
+            <div style="position: relative;">
+                <input type="password" id="googleApiKeyInput" placeholder="AI..." class="api-key-input">
+                <button id="toggleGoogleApiKey" class="toggle-password-btn" type="button">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
+            <small class="api-key-help">
+                Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>
+            </small>
+        </div>
+        <div class="api-key-actions">
+            <button id="saveGoogleApiKey" class="button">Save Google AI Key</button>
+            <button id="testGoogleApiKey" class="button button-test">Test Gemini</button>
+            <div id="googleApiKeyStatus" class="api-status"></div>
+        </div>
+
+        <!-- AI Provider Selection -->
+        <div class="api-provider-container" style="margin-top: 20px;">
+            <label for="aiProvider">Default AI Provider:</label>
+            <div class="custom-select">
+                <select id="aiProvider">
+                    <option value="openai">OpenAI (GPT)</option>
+                    <option value="google">Google AI (Gemini)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div class="settings-section">
+        <h3>Extension Settings</h3>
+        <div class="setting-item">
+            <label>
+                <input type="checkbox" id="autoSummarizeYoutube"> 
+                Auto-summarize YouTube videos
+            </label>
+        </div>
+        <div class="setting-item">
+            <label>
+                <input type="checkbox" id="showInlineButtons"> 
+                Show inline summary buttons on websites
+            </label>
+        </div>
+    </div>
+    
+    <div class="settings-section">
+        <h3>Privacy & Security</h3>
+        <p class="privacy-note">
+            🔒 Your API keys are stored locally in your browser and never sent to our servers. 
+            All communication is directly between your browser and the respective AI provider's servers.
+        </p>
+        <button id="clearAllData" class="button button-danger">Clear All Data</button>
+    </div>
+</div>
+
+<!-- Debug info -->
+<div id="debugInfo" style="position: fixed; bottom: 10px; left: 10px; background: #000; color: #0f0; padding: 5px; font-size: 10px; border-radius: 3px; z-index: 99999;">
+    Debug: Starting...
+</div>
+
+<!-- Load tab switcher first for immediate functionality -->
+<script src="tab-switcher.js"></script>
 <script src="load-scripts.js"></script>
-<!--<script src="node_modules/extpay/ExtPay.dev.js"></script>-->
 
 </body>
 </html>

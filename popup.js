@@ -1,505 +1,827 @@
-// document.getElementById('summarizeButton').addEventListener('click', () => {
-//   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-//     chrome.tabs.sendMessage(tabs[0].id, { action: 'summarizeEntirePage' }, (response) => {
-//       document.getElementById('summary').textContent = response.summary;
-//     });
-//   });
-// });
-//
-// chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
-//   if (request.action === 'summarizeEntirePage') {
-//     const apiKey = 'your_api_key_here'; // Replace this with your GPT-4 API key
-//     const summary = await generateSummary(apiKey, document.body.innerText);
-//     sendResponse({ summary });
-//   }
-//   return true; // Required for async sendResponse
-// });
-//
-import ExtPay from "extpay";
-
-const sevenDays = 1000*60*60*24*7 // in milliseconds
-var extpay = ExtPay('summary-extension'); // Careful! See note below
-
-async function checkPaymentStatus() {
-  const now = new Date();
-  const user = await extpay.getUser();
-  console.log(user);
-  if (!user.paid && !user.trialStartedAt) {
-    console.log('openTrialPage');
-    await extpay.openTrialPage();
-  } else if (user.trialStartedAt && (now - user.trialStartedAt) > sevenDays && !user.paid) {
-    await extpay.openPaymentPage();
-  } else {
-    return true;
-  }
-  return false;
-}
-
-// async function checkPaymentStatus() {
-//   const user = await extpay.getUser();
-//   if (!user.paid && !user.trialStartedAt) {
-//     console.log('openTrialPage');
-//     extpay.openTrialPage();
-//   }
-// }
-
-// document.getElementById('summarizeButton').addEventListener('click', () => {
-//   const summaryLength = document.getElementById('summaryLength').value;
-//   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-//     chrome.tabs.sendMessage(tabs[0].id, { action: 'summarizeEntirePage', summaryLength }, (response) => {
-//       document.getElementById('summary').textContent = response?.summary;
-//     });
-//   });
-// });
-
+// Complete popup.js - restored with all functionality
 const USER_LANGUAGE = 'userLanguage';
 const TARGET_LANGUAGE = 'targetLanguage';
 
-const saveButton = document.getElementById('saveButton');
-saveButton.addEventListener('click', async () => {
-  if(!(await checkPaymentStatus())) return;
-  if (saveButton.disabled) return;
-  document.getElementById('loadingContentIcon').classList.add('active');
+// Global managers
+let summariesManager = null;
+let liveChatManager = null;
+let settingsManager = null;
+
+// Mock payment check that always returns true for now
+async function checkPaymentStatus() {
+  return true;
+}
+
+// Main popup initialization
+async function initializePopup() {
+  console.log('🚀 POPUP: Popup initializing...');
+  
+  try {
+    await initializeManagers();
+    setupHomePageEventListeners();
+    await loadInitialSettings();
+    
+    // Handle auto-opening live summary
+    await handleAutoOpenLiveTab();
+    
+    // Set up runtime message listener
+    setupRuntimeMessageListener();
+    
+    console.log('🚀 POPUP: Popup initialization complete');
+  } catch (error) {
+    console.error('🚀 POPUP: Error during popup initialization:', error);
+  }
+}
+
+// Initialize all manager instances
+async function initializeManagers() {
+  try {
+    console.log('Initializing managers...');
+    
+    // Wait for manager classes to be loaded
+    let attempts = 0;
+    while ((!window.SummariesManager || !window.LiveChatManager || !window.SettingsManager) && attempts < 50) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+    
+    if (!window.SummariesManager || !window.LiveChatManager || !window.SettingsManager) {
+      console.warn('Manager classes not loaded, using fallback initialization');
+      // Fallback initialization will be handled by individual page switches
+    } else {
+      summariesManager = new window.SummariesManager();
+      liveChatManager = new window.LiveChatManager();
+      settingsManager = new window.SettingsManager();
+      console.log('All managers initialized successfully');
+    }
+  } catch (error) {
+    console.error('Error initializing managers:', error);
+  }
+}
+
+// Set up event listeners for home page functionality
+function setupHomePageEventListeners() {
+  // Save summary button
+  const saveButton = document.getElementById('saveButton');
+  if (saveButton) {
+    saveButton.addEventListener('click', handleSaveSummary);
+  }
+
+  // Summarize webpage button
+  const summarizeWebpageButton = document.getElementById('summarizeWebpageButton');
+  if (summarizeWebpageButton) {
+    summarizeWebpageButton.addEventListener('click', handleSummarizeWebpage);
+  }
+
+  // Instant summary functionality
+  const instantSummaryTextarea = document.getElementById('instantSummaryTextarea');
+  const instantSummaryButton = document.getElementById('instantSummaryButton');
+  
+  if (instantSummaryTextarea) {
+    instantSummaryTextarea.addEventListener('input', (event) => {
+      if (instantSummaryButton) {
+        instantSummaryButton.disabled = !event.target.value;
+      }
+    });
+  }
+
+  if (instantSummaryButton) {
+    instantSummaryButton.addEventListener('click', handleInstantSummary);
+  }
+
+  // Settings change listeners
+  const targetLanguageSelect = document.getElementById(TARGET_LANGUAGE);
+  const summaryLengthSelect = document.getElementById('summaryLength');
+  
+  if (targetLanguageSelect) {
+    targetLanguageSelect.addEventListener('change', (event) => {
+      chrome.storage.local.set({ [TARGET_LANGUAGE]: event.target.value });
+    });
+  }
+
+  if (summaryLengthSelect) {
+    summaryLengthSelect.addEventListener('change', () => {
+      const summaryLength = summaryLengthSelect.value;
+      chrome.storage.local.set({ textLength: summaryLength });
+    });
+  }
+
+  // Instant summary toggle
+  const instantSummaryToggle = document.getElementById('instantSummaryToggle');
+  if (instantSummaryToggle) {
+    instantSummaryToggle.addEventListener('click', toggleInstantSummary);
+  }
+
+  // Share buttons
+  const shareEmailButton = document.getElementById('shareEmail');
+  const shareTwitterButton = document.getElementById('shareTwitter');
+  
+  if (shareEmailButton) {
+    shareEmailButton.addEventListener('click', handleShareEmail);
+  }
+  
+  if (shareTwitterButton) {
+    shareTwitterButton.addEventListener('click', handleShareTwitter);
+  }
+}
+
+// Toggle instant summary section
+function toggleInstantSummary() {
+  const toggle = document.getElementById('instantSummaryToggle');
+  const container = document.querySelector('.instant-summary');
+  
+  if (!toggle || !container) return;
+  
+  if (toggle.classList.contains('closed')) {
+    toggle.classList.remove('closed');
+    toggle.classList.add('opened');
+    toggle.textContent = 'Hide text summarizer';
+  } else {
+    toggle.classList.remove('opened');
+    toggle.classList.add('closed');
+    toggle.textContent = 'Insert text to summarize';
+  }
+}
+
+// Handle save summary functionality
+async function handleSaveSummary() {
+  if (!(await checkPaymentStatus())) return;
+  
+  const saveButton = document.getElementById('saveButton');
+  if (!saveButton || saveButton.disabled) return;
+  
+  const loadingIcon = document.getElementById('loadingContentIcon');
+  const savedIcon = document.getElementById('savedContentIcon');
+  
+  if (loadingIcon) loadingIcon.classList.add('active');
   saveButton.disabled = true;
-  const activeTab = await new Promise((resolve) =>
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
-  );
+  
+  try {
+    const activeTab = await new Promise((resolve) =>
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+    );
 
-  const summary = await chrome.tabs.sendMessage(activeTab.id, { action: 'getSummary' });
-  const tags = document.getElementById('tags').value.split(',').map(tag => tag.trim());
+    const summary = await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(activeTab.id, { action: 'getSummary' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(response);
+        }
+      });
+    });
 
-  if (summary) {
-    const savedSummary = { summary, tags, timestamp: new Date().toISOString() };
-    console.log(savedSummary);
-    chrome.storage.local.get('savedSummaries', (data) => {
-      const savedSummaries = data.savedSummaries || [];
-      if (savedSummaries.some(summary => summary.tags.sort().toString() === tags.sort().toString())) {
-        console.log(tags.sort().toString());
-        document.getElementById('saveButtonError').classList.add('show');
-        document.getElementById('loadingContentIcon').classList.remove('active');
+    const tagsInput = document.getElementById('tags');
+    const tags = tagsInput ? tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+
+    if (summary && tags.length > 0) {
+      const savedSummary = { summary, tags, timestamp: new Date().toISOString() };
+      const { savedSummaries = [] } = await chrome.storage.local.get('savedSummaries');
+      
+      if (savedSummaries.some(existingSummary => 
+          existingSummary.tags.sort().toString() === tags.sort().toString())) {
+        const errorElement = document.getElementById('saveButtonError');
+        if (errorElement) errorElement.classList.add('show');
         return;
       }
+      
       savedSummaries.push(savedSummary);
-      chrome.storage.local.set({ savedSummaries }, () => {
-        document.getElementById('loadingContentIcon').classList.remove('active');
-        document.getElementById('savedContentIcon').classList.add('active');
+      await chrome.storage.local.set({ savedSummaries });
+      
+      if (savedIcon) {
+        savedIcon.classList.add('active');
         setTimeout(() => {
-          document.getElementById('savedContentIcon').classList.remove('active');
+          savedIcon.classList.remove('active');
         }, 2000);
-      });
-    });
+      }
+
+      // Clear error message
+      const errorElement = document.getElementById('saveButtonError');
+      if (errorElement) errorElement.classList.remove('show');
+    }
+  } catch (error) {
+    console.error('Error saving summary:', error);
+  } finally {
+    if (loadingIcon) loadingIcon.classList.remove('active');
+    saveButton.disabled = false;
   }
-});
-
-// Function to display saved summaries
-async function displaySavedSummaries(savedSummaries) {
-  if(!(await checkPaymentStatus())) return;
-  const savedSummariesContainer = document.getElementById('savedSummaries');
-  savedSummariesContainer.innerHTML = '';
-
-  savedSummaries.forEach((savedSummary, index) => {
-    const summaryElement = document.createElement('div');
-    summaryElement.classList.add('summary');
-    summaryElement.innerHTML = `
-        <div class="summary__content">
-          <h3 class="summary__tags">${savedSummary.tags.join(', ')}</h3>
-          <div class="summary__text">${savedSummary.summary}</div>
-        </div>
-        <div class="summary__buttons">
-          <button class="summary__delete" data-index="${index}">
-            <span><i class="fas fa-trash"></i></span>
-          </button>
-          <button class="summary__copy" data-index="${index}"
-            <span><i class="fas fa-copy"></i></span>
-          </button>
-          <button class="summary__twitter" data-index="${index}"
-            <span><i class="fab fa-twitter"></i></span>
-          </button>
-          <button class="summary__email" data-index="${index}"
-            <span><i class="fas fa-envelope"></i></i></span>
-          </button>
-        </div>
-      `;
-    savedSummariesContainer.appendChild(summaryElement);
-  });
-
-  // Add event listeners for delete buttons
-  document.querySelectorAll('.summary__delete').forEach((button) => {
-    button.addEventListener('click', (event) => {
-      const index = button.getAttribute('data-index');
-      savedSummaries.splice(index, 1);
-      chrome.storage.local.set({ savedSummaries }, async () => {
-        const savedSummaries = (await chrome.storage.local.get('savedSummaries')).savedSummaries || [];
-        displaySavedSummaries(savedSummaries);
-      });
-    });
-  });
-
-  document.querySelectorAll('.summary__copy').forEach((button) => {
-    button.addEventListener('click', (event) => {
-      const index = button.getAttribute('data-index');
-      const summary = savedSummaries[index].summary;
-      if (summary) {
-        navigator.clipboard.writeText(summaryText)
-      }
-    });
-  });
-
-  document.querySelectorAll('.summary__twitter').forEach((button) => {
-    button.addEventListener('click', (event) => {
-      const index = button.getAttribute('data-index');
-      const summary = savedSummaries[index].summary;
-      if (summary) {
-        shareOnTwitter(summary);
-      }
-    });
-  });
-
-  document.querySelectorAll('.summary__email').forEach((button) => {
-    button.addEventListener('click', (event) => {
-      const index = button.getAttribute('data-index');
-      const summary = savedSummaries[index].summary;
-      if (summary) {
-        shareViaEmail(summary);
-      }
-    });
-  });
-  chrome.storage.local.get('savedSummaries', (data) => {
-    const savedSummaries = data.savedSummaries || [];
-
-  });
 }
 
-// Initialize saved summaries display
-// document.addEventListener('DOMContentLoaded', () => {
-//   displaySavedSummaries();
-// });
-
-document.getElementById(TARGET_LANGUAGE).addEventListener('change', (event) => {
-  console.log(event.target.value);
-  chrome.storage.local.set({ [TARGET_LANGUAGE]: event.target.value });
-})
-
-function shareViaEmail(summary) {
-  const subject = encodeURIComponent('Check out this summary');
-  const body = encodeURIComponent(summary);
-  const mailtoUrl = `mailto:?subject=${subject}&body=${body}`;
-  window.open(mailtoUrl, '_blank');
-}
-
-function shareOnTwitter(summary) {
-  const text = encodeURIComponent(summary);
-  const twitterUrl = `https://twitter.com/intent/tweet?text=${text}`;
-  window.open(twitterUrl, '_blank');
-}
-
-document.getElementById('shareEmail').addEventListener('click', async () => {
-  if(!(await checkPaymentStatus())) return;
-  const activeTab = await new Promise((resolve) =>
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
-  );
-  const summary = await chrome.tabs.sendMessage(activeTab.id, { action: 'getSummary' });
-  if (summary) {
-    shareViaEmail(summary);
-  }
-});
-
-document.getElementById('shareTwitter').addEventListener('click', async () => {
-  if(!(await checkPaymentStatus())) return;
-  const activeTab = await new Promise((resolve) =>
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
-  );
-  const summary = await chrome.tabs.sendMessage(activeTab.id, { action: 'getSummary' });
-  if (summary) {
-    shareOnTwitter(summary);
-  }
-});
-
-document.getElementById('summaryLength').addEventListener('change', () => {
-  const summaryLength = document.getElementById('summaryLength').value;
-  chrome.storage.local.set({ textLength: summaryLength });
-});
-
-// document.getElementById('autoSummarize').addEventListener('change', (event) => {
-//   const autoSummarize = event.target.checked;
-//   chrome.storage.sync.set({ autoSummarize });
-// });
-//
-// document.addEventListener('DOMContentLoaded', () => {
-//   chrome.storage.sync.get('autoSummarize', (data) => {
-//     document.getElementById('autoSummarize').checked = data.autoSummarize || false;
-//   });
-//   chrome.storage.sync.get(TARGET_LANGUAGE, (data) => {
-//     console.log(data)
-//     document.getElementById(TARGET_LANGUAGE).value = data[TARGET_LANGUAGE];
-//   });
-// });
-
-// document.getElementById('summarizeButton').addEventListener('click', () => {
-//   const summaryLength = document.getElementById('summaryLength').value;
-//   const language = document.getElementById('language').value;
-//   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-//     chrome.tabs.sendMessage(tabs[0].id, { action: 'summarizeEntirePage', summaryLength, language }, (response) => {
-//       document.getElementById('summary').textContent = response?.summary;
-//     });
-//   });
-// });
-const summarizeWebpageButton = document.getElementById('summarizeWebpageButton');
-summarizeWebpageButton.addEventListener('click', async () => {
-  if(!(await checkPaymentStatus())) return;
-  if (summarizeWebpageButton.disabled) return;
+// Handle summarize webpage functionality
+async function handleSummarizeWebpage() {
+  if (!(await checkPaymentStatus())) return;
+  
+  const summarizeWebpageButton = document.getElementById('summarizeWebpageButton');
+  if (!summarizeWebpageButton || summarizeWebpageButton.disabled) return;
+  
+  const originalText = summarizeWebpageButton.textContent;
   summarizeWebpageButton.disabled = true;
-  const activeTab = await new Promise((resolve) =>
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
-  );
+  summarizeWebpageButton.textContent = 'Summarizing...';
+  
+  try {
+    const activeTab = await new Promise((resolve) =>
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+    );
 
-  chrome.tabs.sendMessage(activeTab.id, { action: 'summarizeWebpage' }, (summary) => {
+    await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(activeTab.id, { action: 'summarizeWebpage' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(response);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error summarizing webpage:', error);
+  } finally {
     summarizeWebpageButton.disabled = false;
-  });
-});
+    summarizeWebpageButton.textContent = originalText;
+  }
+}
 
-document.getElementById('instantSummaryTextarea').addEventListener('input', (event) => {
-    document.getElementById('instantSummaryButton').disabled = !event.target.value;
-  });
-
-const instantSummaryButton = document.getElementById('instantSummaryButton');
-instantSummaryButton.addEventListener('click', async () => {
-  if(!(await checkPaymentStatus())) return;
-  const text = document.getElementById('instantSummaryTextarea').value;
+// Handle instant summary functionality
+async function handleInstantSummary() {
+  if (!(await checkPaymentStatus())) return;
+  
+  const instantSummaryTextarea = document.getElementById('instantSummaryTextarea');
+  const instantSummaryButton = document.getElementById('instantSummaryButton');
+  
+  if (!instantSummaryTextarea || !instantSummaryButton) return;
+  
+  const text = instantSummaryTextarea.value.trim();
   if (!text || instantSummaryButton.classList.contains('clicked')) return;
+  
   instantSummaryButton.classList.add('clicked');
-  const activeTab = await new Promise((resolve) =>
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
-  );
-  chrome.tabs.sendMessage(activeTab.id, { action: 'summarize', text }, (summary) => {
-    console.log(summary, 'summary');
-    instantSummaryButton.classList.remove('clicked');
-  });
-});
-
-let summaryInputTimeout;
-document.getElementById('summaryInput').addEventListener('input', async (event) => {
-  clearTimeout(summaryInputTimeout);
-  summaryInputTimeout = setTimeout(async () => {
-    const savedSummaries = (await chrome.storage.local.get('savedSummaries')).savedSummaries || [];
-    const summariesToShow = savedSummaries.filter((summary) => {
-      console.log(event, summary.tags, summary.summary);
-      return summary.tags
-        .some(tag => tag.toLowerCase().includes(event.target.value.toLowerCase()))
-        || summary.summary.toLowerCase().includes(event.target.value.toLowerCase());
+  
+  try {
+    const activeTab = await new Promise((resolve) =>
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+    );
+    
+    await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(activeTab.id, { action: 'summarize', text }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(response);
+        }
+      });
     });
-    displaySavedSummaries(summariesToShow);
-  }, 200);
-});
-
-document.getElementById('tags').addEventListener('input', async (event) => {
-  document.getElementById('saveButtonError').classList.remove('show');
-  document.getElementById('saveButton').disabled = false;
-});
-
-document.getElementById('instantSummaryToggle').addEventListener('click',  (event) => {
-  if ([...event.target.classList].includes('opened')) {
-    event.target.classList.remove('opened');
-    event.target.classList.add('closing');
+  } catch (error) {
+    console.error('Error with instant summary:', error);
+  } finally {
     setTimeout(() => {
-      event.target.classList.remove('closing');
-      event.target.disabled = true;
-      event.target.classList.add('closed');
-    }, 500);
-  } else {
-    event.target.classList.toggle('opened');
-    event.target.classList.toggle('closed');
+      instantSummaryButton.classList.remove('clicked');
+    }, 1000);
   }
-});
+}
 
-function prepareMenuItems() {
-  const menuItems = [...document.getElementsByClassName('menu__item')];
-  menuItems.forEach((menuItem) => {
-    menuItem.addEventListener('click', (event) => {
-      if (event.target.classList.contains('active')) return;
-      setActivePage(event.target, menuItems);
+// Handle share via email
+async function handleShareEmail() {
+  try {
+    const activeTab = await new Promise((resolve) =>
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+    );
+
+    const summary = await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(activeTab.id, { action: 'getSummary' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(response);
+        }
+      });
     });
-  });
-}
 
-async function setActivePage(targetPage, menuItems) {
-  menuItems.forEach((menuItem) => {
-    menuItem.classList.remove('active');
-  });
-  const homePage = document.getElementById('homePage');
-  const summariesPage = document.getElementById('summariesPage');
-  if (targetPage.id === 'menuHome') {
-    homePage.classList.add('active-page');
-    summariesPage.classList.remove('active-page');
-  } else if (targetPage.id === 'menuSummaries') {
-    const savedSummaries = (await chrome.storage.local.get('savedSummaries')).savedSummaries || [];
-    displaySavedSummaries(savedSummaries);
-    summariesPage.classList.add('active-page');
-    homePage.classList.remove('active-page');
-  }
-    targetPage.classList.add('active');
-}
-
-function setLocalizedTextContent(elementId, messageName) {
-  const element = document.getElementById(elementId);
-  if (element) {
-    const message = chrome.i18n.getMessage(messageName);
-    console.log(message);
-    if (message) {
-      element.textContent = message;
+    if (summary) {
+      const subject = encodeURIComponent('Summary from Content Summarizer');
+      const body = encodeURIComponent(`Here's a summary I generated:\n\n${summary}\n\nGenerated using Content Summarizer extension.`);
+      const mailtoLink = `mailto:?subject=${subject}&body=${body}`;
+      chrome.tabs.create({ url: mailtoLink });
     }
+  } catch (error) {
+    console.error('Error sharing via email:', error);
   }
 }
 
-// function updateUIWithLanguage(language) {
-//   console.log(12456);
-//   // Update the UI elements with the localized messages
-//   document.querySelector('html').setAttribute('lang', language);
-//   document.title = chrome.i18n.getMessage('extensionName');
-//   document.getElementById('summarizeWebpageButton').textContent = chrome.i18n.getMessage('summarizeWebpageButton');
-//   document.getElementById('showSummaryButton').textContent = chrome.i18n.getMessage('showSummaryButton');
-// }
+// Handle share on Twitter
+async function handleShareTwitter() {
+  try {
+    const activeTab = await new Promise((resolve) =>
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+    );
 
-// function updateUIWithLocalizedMessages() {
-//   setLocalizedTextContent('summarizeWebpageButton', 'summarizeWebpageButton');
-//   setLocalizedTextContent('summarizeHeader', 'extensionName');
-// }
-//
-// document.addEventListener('DOMContentLoaded', () => {
-//   updateUIWithLocalizedMessages();
-// });
+    const summary = await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(activeTab.id, { action: 'getSummary' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(response);
+        }
+      });
+    });
 
-// document.getElementById(USER_LANGUAGE).addEventListener('change', (event) => {
-//   console.log(136787);
-//   const selectedLanguage = event.target.value;
-//   console.log({ [USER_LANGUAGE]: selectedLanguage });
-//   chrome.storage.local.set({ [USER_LANGUAGE]: selectedLanguage });
-//   //document.querySelector('html').setAttribute('lang', selectedLanguage);
-//   updateUIWithLanguage(selectedLanguage);
-//   chrome.storage.local.get(USER_LANGUAGE).then(lang => {
-//     console.log(lang);
-//   })
-//
-// });
-
-async function updateUIWithLanguage(language = 'en') {
-  // Load the messages.json file for the selected language
-  const messagesUrl = chrome.runtime.getURL(`_locales/${language}/messages.json`);
-  const response = await fetch(messagesUrl);
-  const messages = await response.json();
-  if (!messages) {
-    return;
+    if (summary) {
+      const tweetText = encodeURIComponent(`${summary.substring(0, 200)}... #ContentSummarizer`);
+      const twitterUrl = `https://twitter.com/intent/tweet?text=${tweetText}`;
+      chrome.tabs.create({ url: twitterUrl });
+    }
+  } catch (error) {
+    console.error('Error sharing on Twitter:', error);
   }
-  // Update the UI elements with the localized messages
-  document.querySelector('html').setAttribute('lang', language);
-  document.title = messages.extensionName.message;
-  for (const key in messages) {
-    const message = messages[key].message;
-    const elements = document.querySelectorAll(`[data-i18n="${key}"]`);
+}
 
-    // Update the elements with the corresponding data-i18n attribute
-    elements.forEach((element) => {
-      console.log('element.placeholder', element.placeholder);
-      if (element.placeholder) {
-        element.placeholder = message;
+// Load initial settings
+async function loadInitialSettings() {
+  try {
+    const storage = await chrome.storage.local.get([
+      USER_LANGUAGE, 
+      TARGET_LANGUAGE, 
+      'textLength',
+      'apiKey',
+      'googleApiKey',
+      'aiProvider'
+    ]);
+    
+    // Set saved values
+    if (storage[TARGET_LANGUAGE]) {
+      const targetSelect = document.getElementById(TARGET_LANGUAGE);
+      if (targetSelect) targetSelect.value = storage[TARGET_LANGUAGE];
+    }
+    
+    if (storage.textLength) {
+      const lengthSelect = document.getElementById('summaryLength');
+      if (lengthSelect) lengthSelect.value = storage.textLength;
+    }
+
+    // Load API keys in settings
+    if (storage.apiKey) {
+      const apiKeyInput = document.getElementById('apiKeyInput');
+      if (apiKeyInput) apiKeyInput.value = storage.apiKey;
+    }
+
+    if (storage.googleApiKey) {
+      const googleApiKeyInput = document.getElementById('googleApiKeyInput');
+      if (googleApiKeyInput) googleApiKeyInput.value = storage.googleApiKey;
+    }
+
+    if (storage.aiProvider) {
+      const aiProviderSelect = document.getElementById('aiProvider');
+      if (aiProviderSelect) aiProviderSelect.value = storage.aiProvider;
+    }
+    
+    // Get current summary topic
+    await loadCurrentSummaryTopic();
+    
+    // Setup settings page event listeners
+    setupSettingsEventListeners();
+  } catch (error) {
+    console.error('Error loading initial settings:', error);
+  }
+}
+
+// Setup settings page event listeners
+function setupSettingsEventListeners() {
+  // OpenAI API key toggle
+  const toggleApiKeyBtn = document.getElementById('toggleApiKey');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  
+  if (toggleApiKeyBtn && apiKeyInput) {
+    toggleApiKeyBtn.addEventListener('click', () => {
+      const isPassword = apiKeyInput.type === 'password';
+      apiKeyInput.type = isPassword ? 'text' : 'password';
+      const icon = toggleApiKeyBtn.querySelector('i');
+      if (icon) {
+        icon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
       }
-      element.textContent = message;
     });
   }
-  //const tagsInput = document.querySelectorAll(`[data-i18n="${tags}"]`);
 
+  // Google API key toggle
+  const toggleGoogleApiKeyBtn = document.getElementById('toggleGoogleApiKey');
+  const googleApiKeyInput = document.getElementById('googleApiKeyInput');
+  
+  if (toggleGoogleApiKeyBtn && googleApiKeyInput) {
+    toggleGoogleApiKeyBtn.addEventListener('click', () => {
+      const isPassword = googleApiKeyInput.type === 'password';
+      googleApiKeyInput.type = isPassword ? 'text' : 'password';
+      const icon = toggleGoogleApiKeyBtn.querySelector('i');
+      if (icon) {
+        icon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+      }
+    });
+  }
+
+  // Save OpenAI API key
+  const saveApiKeyBtn = document.getElementById('saveApiKey');
+  if (saveApiKeyBtn) {
+    saveApiKeyBtn.addEventListener('click', async () => {
+      const apiKey = apiKeyInput?.value?.trim();
+      const statusDiv = document.getElementById('apiKeyStatus');
+      
+      if (!apiKey) {
+        showApiStatus(statusDiv, 'Please enter an API key', 'error');
+        return;
+      }
+
+      try {
+        await apiService.setApiKey('openai', apiKey);
+        showApiStatus(statusDiv, 'OpenAI API key saved successfully', 'success');
+      } catch (error) {
+        showApiStatus(statusDiv, `Error saving API key: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  // Save Google API key
+  const saveGoogleApiKeyBtn = document.getElementById('saveGoogleApiKey');
+  if (saveGoogleApiKeyBtn) {
+    saveGoogleApiKeyBtn.addEventListener('click', async () => {
+      const apiKey = googleApiKeyInput?.value?.trim();
+      const statusDiv = document.getElementById('googleApiKeyStatus');
+      
+      if (!apiKey) {
+        showApiStatus(statusDiv, 'Please enter an API key', 'error');
+        return;
+      }
+
+      try {
+        await apiService.setApiKey('google', apiKey);
+        showApiStatus(statusDiv, 'Google AI API key saved successfully', 'success');
+      } catch (error) {
+        showApiStatus(statusDiv, `Error saving API key: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  // Test OpenAI API key
+  const testApiKeyBtn = document.getElementById('testApiKey');
+  if (testApiKeyBtn) {
+    testApiKeyBtn.addEventListener('click', async () => {
+      const apiKey = apiKeyInput?.value?.trim();
+      const statusDiv = document.getElementById('apiKeyStatus');
+      
+      if (!apiKey) {
+        showApiStatus(statusDiv, 'Please enter an API key to test', 'error');
+        return;
+      }
+
+      showApiStatus(statusDiv, 'Testing connection...', 'loading');
+      
+      try {
+        const success = await apiService.testApiConnection('openai', apiKey, 'gpt-4o-mini');
+        if (success) {
+          showApiStatus(statusDiv, 'OpenAI connection successful!', 'success');
+        } else {
+          showApiStatus(statusDiv, 'OpenAI connection failed', 'error');
+        }
+      } catch (error) {
+        showApiStatus(statusDiv, `Connection test failed: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  // Test Google API key
+  const testGoogleApiKeyBtn = document.getElementById('testGoogleApiKey');
+  if (testGoogleApiKeyBtn) {
+    testGoogleApiKeyBtn.addEventListener('click', async () => {
+      const apiKey = googleApiKeyInput?.value?.trim();
+      const statusDiv = document.getElementById('googleApiKeyStatus');
+      
+      if (!apiKey) {
+        showApiStatus(statusDiv, 'Please enter an API key to test', 'error');
+        return;
+      }
+
+      showApiStatus(statusDiv, 'Testing connection...', 'loading');
+      
+      try {
+        const success = await apiService.testApiConnection('google', apiKey, 'gemini-pro');
+        if (success) {
+          showApiStatus(statusDiv, 'Google AI connection successful!', 'success');
+        } else {
+          showApiStatus(statusDiv, 'Google AI connection failed', 'error');
+        }
+      } catch (error) {
+        showApiStatus(statusDiv, `Connection test failed: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  // AI Provider selection
+  const aiProviderSelect = document.getElementById('aiProvider');
+  if (aiProviderSelect) {
+    aiProviderSelect.addEventListener('change', async (event) => {
+      const provider = event.target.value;
+      await chrome.storage.local.set({ aiProvider: provider });
+    });
+  }
+
+  // Clear all data button
+  const clearAllDataBtn = document.getElementById('clearAllData');
+  if (clearAllDataBtn) {
+    clearAllDataBtn.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to clear all extension data? This cannot be undone.')) {
+        try {
+          await chrome.storage.local.clear();
+          // Reload the popup to reflect changes
+          window.location.reload();
+        } catch (error) {
+          console.error('Error clearing data:', error);
+          alert('Error clearing data: ' + error.message);
+        }
+      }
+    });
+  }
 }
 
-function enableSaveButton() {
-  const saveButton = document.getElementById("saveButton");
-  saveButton.disabled = false;
-  saveButton.classList.add('active');
-  setTimeout(() => {
-    saveButton.classList.remove('active');
-  }, 1400);
+// Helper function to show API status messages
+function showApiStatus(statusDiv, message, type) {
+  if (!statusDiv) return;
+  
+  statusDiv.textContent = message;
+  statusDiv.className = `api-status ${type}`;
+  
+  // Clear status after 5 seconds for non-error messages
+  if (type !== 'error') {
+    setTimeout(() => {
+      statusDiv.textContent = '';
+      statusDiv.className = 'api-status';
+    }, 5000);
+  }
 }
 
-async function onPopupAdded() {
-  //displaySavedSummaries();
-  prepareMenuItems();
-  await checkPaymentStatus();
-  const userLanguage = (await chrome.storage.local.get(USER_LANGUAGE))[USER_LANGUAGE];
-  const targetLanguage = (await chrome.storage.local.get(TARGET_LANGUAGE))[TARGET_LANGUAGE];
-  const { textLength } = (await chrome.storage.local.get('textLength'));
-  console.log(textLength, (await chrome.storage.local.get('textLength')));
-  console.log(userLanguage, document.getElementById(USER_LANGUAGE).value);
-  await updateUIWithLanguage(userLanguage);
-  const activeTab = await new Promise((resolve) =>
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
-  );
-  chrome.tabs.sendMessage(activeTab.id, { action: 'getSummaryTopic', key: 'summaryTopic' }, response => {
-    if (response?.value) {
-      document.getElementById("tags").value = response.value;
-      document.getElementById('saveButtonError').classList.remove('show');
-      enableSaveButton();
+// Load current summary topic from content script
+async function loadCurrentSummaryTopic() {
+  try {
+    const activeTab = await new Promise((resolve) =>
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+    );
+    
+    chrome.tabs.sendMessage(activeTab.id, { action: 'getSummaryTopic', key: 'summaryTopic' }, response => {
+      if (response?.value) {
+        const tagsInput = document.getElementById("tags");
+        if (tagsInput) {
+          tagsInput.value = response.value;
+          const errorElement = document.getElementById('saveButtonError');
+          if (errorElement) errorElement.classList.remove('show');
+          
+          const saveButton = document.getElementById('saveButton');
+          if (saveButton) saveButton.disabled = false;
+        }
+      }
+    });
+  } catch (error) {
+    console.log('Could not load summary topic:', error);
+  }
+}
+
+// Handle auto-opening live tab if video data is waiting
+async function handleAutoOpenLiveTab() {
+  console.log('🔍 handleAutoOpenLiveTab() starting...');
+  
+  try {
+    console.log('🔍 Requesting video data from background...');
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'getVideoData' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(response);
+        }
+      });
+    });
+    
+    console.log('🔍 Background response:', response);
+    
+    if (response && response.shouldOpenLiveTab && response.videoData) {
+      console.log('🔍 Auto-switching to Live Summary tab with video data:', response.videoData.title);
+      
+      // Force switch to Live Summary tab immediately
+      await forceSwitchToLiveTab();
+      
+      // Initialize Live Chat Manager with video data
+      setTimeout(async () => {
+        console.log('🔍 Initializing Live Chat Manager with video data...');
+        if (liveChatManager && liveChatManager.initializeWithCurrentVideo) {
+          // FIXED: Pass the video data directly to preserve existing saved state
+          await liveChatManager.initializeWithCurrentVideo(response.videoData);
+        } else {
+          // Fallback: create manager if it doesn't exist
+          if (window.LiveChatManager) {
+            liveChatManager = new window.LiveChatManager();
+            // FIXED: Pass the video data directly to preserve existing saved state
+            await liveChatManager.initializeWithCurrentVideo(response.videoData);
+          } else {
+            console.log('🔍 LiveChatManager class not available yet, will be handled by page switch');
+          }
+        }
+      }, 500);
+    } else {
+      console.log('🔍 No auto-open required:');
+      console.log('  - shouldOpenLiveTab:', response?.shouldOpenLiveTab);
+      console.log('  - hasVideoData:', !!response?.videoData);
+      console.log('  - response:', response);
     }
-  });
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log(request);
-    if (request.action === "updatePopup" && request.data) {
-      document.getElementById("tags").value = request.data;
-      document.getElementById('saveButtonError').classList.remove('show');
-      enableSaveButton();
-    }
-  });
-  if (userLanguage) {
-    document.getElementById(USER_LANGUAGE).value = userLanguage;
-    console.log(document.getElementById(USER_LANGUAGE).value, 'value')
+  } catch (error) {
+    console.log('🔍 ERROR: No video data available from background:', error);
   }
-  if (targetLanguage) {
-    document.getElementById(TARGET_LANGUAGE).value = targetLanguage;
-  }
-  if (textLength) {
-    document.getElementById('summaryLength').value = textLength;
-  }
-  loadSummaries();
-  document.dispatchEvent(new CustomEvent('popupLoaded'));
 }
 
-(async () => {
-  await onPopupAdded();
-})()
-// document.addEventListener('DOMContentLoaded', async () => {
-//   // Get the saved language from the storage
-//   displaySavedSummaries();
-//   const userLanguage = (await chrome.storage.local.get(USER_LANGUAGE))[USER_LANGUAGE];
-//   const targetLanguage = (await chrome.storage.local.get(TARGET_LANGUAGE))[TARGET_LANGUAGE];
-//   const { textLength } = (await chrome.storage.local.get('textLength'));
-//   console.log(textLength, (await chrome.storage.local.get('textLength')));
-//   updateUIWithLanguage(userLanguage);
-//   if (userLanguage) {
-//     document.getElementById(USER_LANGUAGE).value = userLanguage;
-//   }
-//   if (targetLanguage) {
-//     document.getElementById(TARGET_LANGUAGE).value = targetLanguage;
-//   }
-//   if (textLength) {
-//     document.getElementById('summaryLength').value = textLength;
-//   }
-//   chrome.runtime.sendMessage({ action: 'getSummaryTopic', key: 'summaryTopic' }, response => {
-//     if (response.value) {
-//       document.getElementById("tags").value = response.value;
-//     }
-//   });
-//   chrome.runtime.sendMessage({ action: 'loadCustomSelect' });
-// });
-//
-//
-// chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-//   if (request.action === "updateTags") {
-//     console.log(request.data, 'RRRRR');
-//     if (request.data) {
-//       document.getElementById("tags").value = request.data;
-//     }
-//   }
-// });
+// Force switch to Live Summary tab (bypassing tab switcher timing issues)
+async function forceSwitchToLiveTab() {
+  console.log('🔄 FORCE SWITCH: forceSwitchToLiveTab() called');
+  
+  // Wait for DOM elements to be ready
+  let attempts = 0;
+  const maxAttempts = 50;
+  
+  console.log('🔄 FORCE SWITCH: Looking for required elements...');
+  
+  while (attempts < maxAttempts) {
+    const liveTab = document.getElementById('menuLive');
+    const livePage = document.getElementById('liveSummaryPage');
+    
+    console.log(`🔄 FORCE SWITCH: Attempt ${attempts + 1}/${maxAttempts}`);
+    console.log('🔄 FORCE SWITCH: liveTab found:', !!liveTab);
+    console.log('🔄 FORCE SWITCH: livePage found:', !!livePage);
+    
+    if (liveTab && livePage) {
+      console.log('🔄 FORCE SWITCH: Found required elements, switching tabs...');
+      
+      // Log current state before switching
+      const allTabs = document.querySelectorAll('.menu__item');
+      const allPages = document.querySelectorAll('.page');
+      
+      console.log('🔄 FORCE SWITCH: Current tab states:');
+      allTabs.forEach((tab, index) => {
+        console.log(`  Tab ${index} (${tab.id}): active=${tab.classList.contains('active')}`);
+      });
+      
+      console.log('🔄 FORCE SWITCH: Current page states:');
+      allPages.forEach((page, index) => {
+        console.log(`  Page ${index} (${page.id}): active=${page.classList.contains('active-page')}`);
+      });
+      
+      // Remove active from all tabs and pages
+      console.log('🔄 FORCE SWITCH: Removing active classes...');
+      allTabs.forEach(tab => {
+        if (tab.classList.contains('active')) {
+          console.log(`🔄 FORCE SWITCH: Removing active from tab: ${tab.id}`);
+          tab.classList.remove('active');
+        }
+      });
+      
+      allPages.forEach(page => {
+        if (page.classList.contains('active-page')) {
+          console.log(`🔄 FORCE SWITCH: Removing active-page from: ${page.id}`);
+          page.classList.remove('active-page');
+        }
+      });
+      
+      // Activate Live Summary tab and page
+      console.log('🔄 FORCE SWITCH: Adding active classes to Live Summary...');
+      liveTab.classList.add('active');
+      livePage.classList.add('active-page');
+      
+      // Verify the switch worked
+      const isTabActive = liveTab.classList.contains('active');
+      const isPageActive = livePage.classList.contains('active-page');
+      
+      console.log('🔄 FORCE SWITCH: Verification:');
+      console.log(`  Live tab active: ${isTabActive}`);
+      console.log(`  Live page active: ${isPageActive}`);
+      
+      if (isTabActive && isPageActive) {
+        console.log('🔄 FORCE SWITCH: ✅ Successfully switched to Live Summary tab');
+        
+        // Also call the page switch handler
+        if (window.handlePageSwitch) {
+          console.log('🔄 FORCE SWITCH: Calling handlePageSwitch for liveSummaryPage');
+          await window.handlePageSwitch('liveSummaryPage');
+        }
+        
+        return true;
+      } else {
+        console.error('🔄 FORCE SWITCH: ❌ Failed to set active classes properly');
+        return false;
+      }
+    }
+    
+    console.log('🔄 FORCE SWITCH: Elements not found yet, waiting...');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    attempts++;
+  }
+  
+  console.error('🔄 FORCE SWITCH: ❌ Failed to find tab elements after', maxAttempts * 100, 'ms');
+  
+  // Log what elements we do have for debugging
+  const allElements = document.querySelectorAll('[id*="menu"], [id*="Page"]');
+  console.log('🔄 FORCE SWITCH: Available elements with menu/Page in ID:');
+  allElements.forEach(el => {
+    console.log(`  - ${el.id}: ${el.tagName}, classes: ${el.className}`);
+  });
+  
+  return false;
+}
 
-async function loadSummaries() {
-  const summaries = await chrome.storage.local.get('savedSummaries');
-  console.log(summaries);
+// Set up runtime message listener
+function setupRuntimeMessageListener() {
+  chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+    console.log('Popup received message:', request);
+    
+    if (request.action === "updateTags" && request.data) {
+      const tagsInput = document.getElementById("tags");
+      if (tagsInput) {
+        tagsInput.value = request.data;
+        const errorElement = document.getElementById('saveButtonError');
+        if (errorElement) errorElement.classList.remove('show');
+        
+        const saveButton = document.getElementById('saveButton');
+        if (saveButton) saveButton.disabled = false;
+      }
+    } else if (request.action === "openLiveSummary" && request.videoData) {
+      console.log('📺 Opening Live Summary with video data from runtime message:', request.videoData.title);
+      
+      // Force switch to Live Summary tab immediately
+      await forceSwitchToLiveTab();
+      
+      // Initialize with video data
+      setTimeout(async () => {
+        console.log('📺 Initializing with video data from runtime message...');
+        if (liveChatManager && liveChatManager.initializeWithCurrentVideo) {
+          await liveChatManager.initializeWithCurrentVideo(request.videoData);
+        } else {
+          // Fallback: create manager if it doesn't exist
+          if (window.LiveChatManager) {
+            liveChatManager = new window.LiveChatManager();
+            await liveChatManager.initializeWithCurrentVideo(request.videoData);
+          } else {
+            console.log('📺 LiveChatManager class not available yet, will be handled by page switch');
+          }
+        }
+      }, 500);
+    }
+    
+    sendResponse({ success: true });
+  });
+}
+
+// Page switching handlers (to work with tab-switcher.js)
+window.handlePageSwitch = async function(targetPageId) {
+  console.log('Handling page switch to:', targetPageId);
+  
+  try {
+    if (targetPageId === 'liveSummaryPage') {
+      // Check if LiveChatManager already exists and is initialized
+      if (liveChatManager && liveChatManager.isInitialized && liveChatManager.currentVideoId) {
+        console.log('🎬 LiveChatManager already initialized with video:', liveChatManager.currentVideoId, '- preserving state');
+        // Just ensure the UI is updated, don't re-initialize
+        if (liveChatManager.youtubeLiveSummary && liveChatManager.youtubeLiveSummary.currentVideoData) {
+          liveChatManager.updateVideoInfo(liveChatManager.youtubeLiveSummary.currentVideoData);
+        }
+        return; // Don't re-initialize
+      }
+      
+      if (!liveChatManager) {
+        if (window.LiveChatManager) {
+          liveChatManager = new window.LiveChatManager();
+        }
+      }
+      if (liveChatManager && liveChatManager.initialize) {
+        await liveChatManager.initialize();
+      }
+    } else if (targetPageId === 'summariesPage') {
+      if (!summariesManager) {
+        if (window.SummariesManager) {
+          summariesManager = new window.SummariesManager();
+        }
+      }
+      if (summariesManager && summariesManager.initialize) {
+        await summariesManager.initialize();
+      }
+    } else if (targetPageId === 'settingsPage') {
+      if (!settingsManager) {
+        if (window.SettingsManager) {
+          settingsManager = new window.SettingsManager();
+        }
+      }
+      if (settingsManager && settingsManager.initialize) {
+        settingsManager.initialize();
+      }
+    }
+  } catch (error) {
+    console.error('Error in page switch handler:', error);
+  }
+};
+
+// Run initialization immediately or when DOM is ready
+if (document.readyState === 'loading') {
+  // If DOM is still loading, wait for it
+  document.addEventListener('DOMContentLoaded', initializePopup);
+} else {
+  // DOM is already loaded, run immediately
+  console.log('🚀 POPUP: DOM already loaded, initializing immediately');
+  initializePopup();
 }

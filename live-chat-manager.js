@@ -1,0 +1,676 @@
+// Live Chat Manager - handles YouTube live summary functionality with state persistence
+class LiveChatManager {
+  constructor() {
+    this.youtubeLiveSummary = null;
+    this.currentVideoId = null;
+    this.chatContainer = null;
+    this.inputContainer = null;
+    this.videoInfoContainer = null;
+    this.isInitialized = false; // Add state tracking
+  }
+
+  async initialize() {
+    console.log('🎬 LiveChatManager: Starting initialization...');
+    
+    this.chatContainer = document.getElementById('chatMessages');
+    this.inputContainer = document.getElementById('chatInput');
+    this.videoInfoContainer = document.getElementById('videoInfo');
+    
+    // Show loading state immediately to prevent error flash
+    this.showLoadingState();
+    
+    // Set up event listeners
+    this.setupEventListeners();
+    
+    // Listen for video load requests
+    window.addEventListener('loadVideoInLiveChat', (event) => {
+      this.loadVideoWithHistory(event.detail.videoData, event.detail.chatHistory);
+    });
+    
+    // Only restore session if we're not already initialized with a video
+    if (!this.isInitialized || !this.currentVideoId || !this.youtubeLiveSummary) {
+      console.log('🎬 LiveChatManager: First initialization, attempting restore...');
+      // Add a small delay to ensure DOM is fully ready and avoid flash errors
+      setTimeout(async () => {
+        try {
+          await this.restorePreviousSession();
+        } catch (error) {
+          console.error('🎬 Error during session restore:', error);
+          this.showNoVideoMessage();
+        }
+      }, 300);
+    } else {
+      console.log('🎬 LiveChatManager: Already initialized with video:', this.currentVideoId, '- preserving current state');
+      // Just make sure the UI is properly displayed
+      if (this.youtubeLiveSummary && this.youtubeLiveSummary.currentVideoData) {
+        this.updateVideoInfo(this.youtubeLiveSummary.currentVideoData);
+      }
+    }
+  }
+
+  setupEventListeners() {
+    const sendButton = document.getElementById('sendMessageBtn');
+    const chatInput = document.getElementById('chatInput');
+    const bulletPointsBtn = document.getElementById('bulletPointsBtn');
+    const questionsBtn = document.getElementById('questionsBtn');
+    const saveVideoBtn = document.getElementById('saveVideoBtn');
+
+    if (sendButton) {
+      sendButton.addEventListener('click', () => this.sendMessage());
+    }
+
+    if (chatInput) {
+      chatInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          this.sendMessage();
+        }
+      });
+    }
+
+    if (bulletPointsBtn) {
+      bulletPointsBtn.addEventListener('click', () => this.generateBulletPoints());
+    }
+
+    if (questionsBtn) {
+      questionsBtn.addEventListener('click', () => this.generateQuestions());
+    }
+
+    if (saveVideoBtn) {
+      saveVideoBtn.addEventListener('click', () => this.saveCurrentVideo());
+    }
+  }
+
+  async restorePreviousSession() {
+    console.log('🎬 LiveChatManager: Attempting to restore previous session...');
+    
+    try {
+      // Check if we're on a YouTube video page
+      const activeTab = await new Promise((resolve) =>
+        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+      );
+
+      if (!activeTab.url || !activeTab.url.includes('youtube.com/watch')) {
+        console.log('🎬 Not on YouTube video page, showing no video message');
+        this.showNoVideoMessage();
+        return;
+      }
+
+      // Extract video ID from current URL
+      const urlParams = new URLSearchParams(new URL(activeTab.url).search);
+      const currentVideoId = urlParams.get('v');
+
+      if (!currentVideoId) {
+        console.log('🎬 No video ID found in URL');
+        this.showNoVideoMessage();
+        return;
+      }
+
+      console.log('🎬 Detected current video ID:', currentVideoId);
+
+      // Check storage in priority order:
+      
+      // 1. Check temporary session storage first (most recent data with transcript)
+      const sessionKey = `liveChatSession_${currentVideoId}`;
+      const sessionResult = await chrome.storage.local.get([sessionKey]);
+      const savedSession = sessionResult[sessionKey];
+
+      if (savedSession && savedSession.videoData && savedSession.timestamp > Date.now() - (24 * 60 * 60 * 1000)) {
+        console.log('🎬 Restoring from temporary session:', savedSession.videoData.title);
+        await this.loadVideoWithHistory(savedSession.videoData, savedSession.chatHistory || []);
+        return;
+      }
+
+      // 2. Check if this video is saved in long-term storage
+      const savedVideosResult = await chrome.storage.local.get(['savedVideos']);
+      const savedVideos = savedVideosResult.savedVideos || [];
+      const savedVideo = savedVideos.find(v => v.videoId === currentVideoId);
+
+      if (savedVideo) {
+        console.log('🎬 Found saved video, loading:', savedVideo.title);
+        // Load saved video data (without transcript, will be fetched fresh)
+        const basicVideoData = {
+          videoId: savedVideo.videoId,
+          title: savedVideo.title,
+          url: savedVideo.url,
+          thumbnail: savedVideo.thumbnail,
+          chatHistory: savedVideo.chatHistory || []
+        };
+        await this.loadVideoWithHistory(basicVideoData, savedVideo.chatHistory || []);
+        return;
+      }
+
+      // 3. Try to get current video data - with better error handling
+      let currentVideoData = null;
+      
+      // First try content script with timeout
+      try {
+        console.log('🎬 Trying to get video data from content script...');
+        const contentResponse = await Promise.race([
+          new Promise((resolve, reject) => {
+            chrome.tabs.sendMessage(activeTab.id, { action: 'getVideoData' }, (response) => {
+              if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+              } else {
+                resolve(response);
+              }
+            });
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Content script timeout')), 2000))
+        ]);
+        
+        if (contentResponse && contentResponse.videoData) {
+          currentVideoData = contentResponse.videoData;
+          console.log('🎬 Got current video data from content script:', currentVideoData.title);
+        }
+      } catch (error) {
+        console.log('🎬 Content script not available or timed out:', error.message);
+      }
+
+      // If content script failed, try background script
+      if (!currentVideoData) {
+        try {
+          console.log('🎬 Trying to get video data from background script...');
+          const response = await Promise.race([
+            new Promise((resolve, reject) => {
+              chrome.runtime.sendMessage({ action: 'getVideoData' }, (response) => {
+                if (chrome.runtime.lastError) {
+                  reject(chrome.runtime.lastError);
+                } else {
+                  resolve(response);
+                }
+              });
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 1500))
+          ]);
+          
+          if (response && response.videoData) {
+            currentVideoData = response.videoData;
+            console.log('🎬 Found video data from background script:', currentVideoData.title);
+          }
+        } catch (error) {
+          console.log('🎬 Background script not available or timed out:', error.message);
+        }
+      }
+
+      // If we have current video data, initialize fresh
+      if (currentVideoData) {
+        console.log('🎬 Initializing fresh video:', currentVideoData.title);
+        await this.initializeWithCurrentVideo(currentVideoData);
+        return;
+      }
+
+      // Last resort: create minimal video data from URL for graceful degradation
+      console.log('🎬 Creating minimal video data from URL as fallback');
+      const fallbackVideoData = {
+        videoId: currentVideoId,
+        title: 'YouTube Video',
+        url: activeTab.url,
+        thumbnail: `https://img.youtube.com/vi/${currentVideoId}/maxresdefault.jpg`
+      };
+      
+      await this.initializeWithCurrentVideo(fallbackVideoData);
+      
+    } catch (error) {
+      console.error('🎬 Error in restorePreviousSession:', error);
+      this.showNoVideoMessage();
+    }
+  }
+
+  async initializeWithCurrentVideo(videoData = null) {
+    console.log('🎬 LiveChatManager: initializeWithCurrentVideo called with:', videoData?.title || 'no video data');
+    
+    if (this.isInitialized && this.currentVideoId) {
+      console.log('🎬 Already initialized with video:', this.currentVideoId, '- skipping re-initialization');
+      return;
+    }
+
+    this.setupEventListeners();
+    
+    // If video data is provided directly (from "Summarize Video" button)
+    if (videoData) {
+      console.log('🎬 Video data provided directly:', videoData.title);
+      this.currentVideoId = videoData.videoId;
+      
+      // Clear any existing content to prevent flash
+      this.clearChatDisplay();
+      
+      // CRITICAL FIX: Check if this video is already saved before initializing
+      const savedVideo = await this.checkIfVideoSaved(videoData.videoId);
+      
+      if (savedVideo && savedVideo.chatHistory && savedVideo.chatHistory.length > 0) {
+        console.log('🎬 Found saved video with existing chat history - loading saved data');
+        
+        // Use the saved video data instead of creating new
+        const enhancedVideoData = {
+          ...videoData,
+          chatHistory: savedVideo.chatHistory,
+          summary: savedVideo.summary || '',
+          isFromSavedVideo: true
+        };
+        
+        await this.loadVideoWithHistory(enhancedVideoData, savedVideo.chatHistory);
+        this.isInitialized = true;
+        return;
+      } else {
+        console.log('🎬 No saved chat history found - using provided video data');
+        
+        // Use the provided video data (which may include fresh summary)
+        await this.loadVideoWithHistory(videoData, videoData.chatHistory || []);
+        this.isInitialized = true;
+        return;
+      }
+    }
+
+    // Fallback: Try to get video data from background script
+    try {
+      console.log('🎬 No video data provided, trying background script...');
+      
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: 'getVideoData' }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve(response);
+          }
+        });
+      });
+      
+      if (response && response.videoData) {
+        console.log('🎬 Found video data from background');
+        this.currentVideoId = response.videoData.videoId;
+        
+        // Clear any existing content
+        this.clearChatDisplay();
+        
+        // Let YouTubeLiveSummary handle the saved video check internally
+        await this.youtubeLiveSummary.initialize(response.videoData);
+        this.updateVideoInfo(response.videoData);
+        await this.saveCurrentSession();
+        
+        // Mark as successfully initialized
+        this.isInitialized = true;
+        return;
+      }
+    } catch (error) {
+      console.log('🎬 Error getting video data from background:', error.message);
+    }
+    
+    // Try content script as fallback
+    try {
+      const activeTab = await new Promise((resolve) =>
+        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+      );
+      
+      if (activeTab.url && activeTab.url.includes('youtube.com/watch')) {
+        const response = await Promise.race([
+          new Promise((resolve, reject) => {
+            chrome.tabs.sendMessage(activeTab.id, { action: 'getVideoData' }, (response) => {
+              if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+              } else {
+                resolve(response);
+              }
+            });
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Content script timeout')), 2000))
+        ]);
+        
+        if (response && response.videoData) {
+          console.log('🎬 Got video data from content script');
+          this.currentVideoId = response.videoData.videoId;
+          
+          // Try to fetch transcript if not available
+          if (!response.videoData.transcript) {
+            try {
+              const transcriptResponse = await Promise.race([
+                new Promise((resolve, reject) => {
+                  chrome.tabs.sendMessage(activeTab.id, { 
+                    action: 'fetchTranscript', 
+                    videoId: response.videoData.videoId 
+                  }, (transcriptResponse) => {
+                    if (chrome.runtime.lastError) {
+                      reject(chrome.runtime.lastError);
+                    } else {
+                      resolve(transcriptResponse);
+                    }
+                  });
+                }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Transcript timeout')), 5000))
+              ]);
+              
+              if (transcriptResponse && transcriptResponse.transcript) {
+                response.videoData.transcript = transcriptResponse.transcript;
+                response.videoData.timestampedTranscript = transcriptResponse.timestampedTranscript;
+              }
+            } catch (transcriptError) {
+              console.log('🎬 Transcript fetch timed out or failed:', transcriptError.message);
+            }
+          }
+          
+          // Clear any existing content
+          this.clearChatDisplay();
+          
+          // Let YouTubeLiveSummary handle the initialization
+          await this.youtubeLiveSummary.initialize(response.videoData);
+          this.updateVideoInfo(response.videoData);
+          await this.saveCurrentSession();
+          
+          // Mark as successfully initialized
+          this.isInitialized = true;
+          return;
+        }
+      }
+    } catch (error) {
+      console.log('🎬 Content script fallback failed:', error.message);
+    }
+    
+    // If all else fails, show no video message
+    console.log('🎬 No video data available from any source');
+    this.showNoVideoMessage();
+  }
+
+  // Clear chat display to prevent flash of old content
+  clearChatDisplay() {
+    if (this.chatContainer) {
+      this.chatContainer.innerHTML = '';
+    }
+  }
+
+  async loadVideoWithHistory(videoData, chatHistory = []) {
+    // console.log('Loading video with history:', videoData.title, 'Messages:', chatHistory.length);
+    
+    this.currentVideoId = videoData.videoId;
+    
+    if (!this.youtubeLiveSummary) {
+      if (typeof YouTubeLiveSummary === 'undefined') {
+        this.showErrorMessage('YouTube Live Summary functionality is not available.');
+        return;
+      }
+      this.youtubeLiveSummary = new YouTubeLiveSummary();
+    }
+    
+    // If this is a saved video (no transcript data), fetch it fresh
+    if (!videoData.transcript && videoData.videoId) {
+      console.log('Fetching fresh transcript for saved video:', videoData.videoId);
+      
+      try {
+        // Try to get fresh transcript from YouTube
+        const activeTab = await new Promise((resolve) =>
+          chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
+        );
+        
+        // Check if we're on the same YouTube video
+        if (activeTab.url && activeTab.url.includes('youtube.com/watch') && activeTab.url.includes(videoData.videoId)) {
+          const transcriptResponse = await new Promise((resolve, reject) => {
+            chrome.tabs.sendMessage(activeTab.id, { 
+              action: 'fetchTranscript', 
+              videoId: videoData.videoId 
+            }, (response) => {
+              if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+              } else {
+                resolve(response);
+              }
+            });
+          });
+          
+          if (transcriptResponse && transcriptResponse.transcript) {
+            videoData.transcript = transcriptResponse.transcript;
+            videoData.timestampedTranscript = transcriptResponse.timestampedTranscript;
+            console.log('Fresh transcript fetched successfully');
+          }
+        } else {
+          console.log('Not on YouTube video page, will work without transcript');
+        }
+      } catch (error) {
+        console.log('Could not fetch fresh transcript:', error);
+        // Continue without transcript - saved chat history will still work
+      }
+    }
+    
+    // Prepare video data with chat history for proper initialization
+    const videoDataWithHistory = {
+      ...videoData,
+      chatHistory: chatHistory
+    };
+    
+    // Initialize with video data
+    await this.youtubeLiveSummary.initialize(videoDataWithHistory);
+    this.updateVideoInfo(videoData);
+    
+    // Clear any existing chat display first
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) {
+      chatMessages.innerHTML = '';
+    }
+    
+    // Restore chat history in the UI
+    if (chatHistory && chatHistory.length > 0) {
+      chatHistory.forEach(chat => {
+        // Only add user message if it's not the initial summary
+        if (chat.type !== 'summary') {
+          this.youtubeLiveSummary.addMessageToChat(chat.message, 'user');
+        }
+        this.youtubeLiveSummary.addMessageToChat(chat.response, 'assistant');
+      });
+      
+      // Set the chat history in the YouTube Live Summary instance
+      this.youtubeLiveSummary.chatHistory = chatHistory;
+    }
+    
+    // Save to temporary session storage (with transcript if available)
+    await this.saveCurrentSession();
+    
+    // Mark as successfully initialized
+    this.isInitialized = true;
+  }
+
+  updateVideoInfo(videoData) {
+    if (!this.videoInfoContainer) return;
+    
+    const thumbnail = this.videoInfoContainer.querySelector('#videoThumbnail');
+    const title = this.videoInfoContainer.querySelector('#videoTitle');
+    const link = this.videoInfoContainer.querySelector('#videoLink');
+    
+    if (thumbnail) thumbnail.src = videoData.thumbnail || '';
+    if (title) title.textContent = videoData.title || 'YouTube Video';
+    if (link) {
+      link.href = videoData.url || '';
+      link.textContent = 'Watch on YouTube';
+    }
+    
+    this.videoInfoContainer.style.display = 'block';
+  }
+
+  async sendMessage() {
+    const input = this.inputContainer;
+    if (!input || !input.value.trim() || !this.youtubeLiveSummary) return;
+    
+    const message = input.value.trim();
+    input.value = '';
+    
+    try {
+      await this.youtubeLiveSummary.sendMessage(message);
+      await this.saveCurrentSession();
+    } catch (error) {
+      console.error('Error sending message:', error);
+      this.showErrorMessage('Failed to send message. Please try again.');
+    }
+  }
+
+  async generateBulletPoints() {
+    if (!this.youtubeLiveSummary) return;
+    
+    try {
+      await this.youtubeLiveSummary.generateBulletPoints();
+      await this.saveCurrentSession();
+    } catch (error) {
+      console.error('Error generating bullet points:', error);
+      this.showErrorMessage('Failed to generate bullet points. Please try again.');
+    }
+  }
+
+  async generateQuestions() {
+    if (!this.youtubeLiveSummary) return;
+    
+    try {
+      await this.youtubeLiveSummary.generateQuestions();
+      await this.saveCurrentSession();
+    } catch (error) {
+      console.error('Error generating questions:', error);
+      this.showErrorMessage('Failed to generate questions. Please try again.');
+    }
+  }
+
+  async saveCurrentVideo() {
+    if (!this.youtubeLiveSummary || !this.currentVideoId) {
+      this.showErrorMessage('No video data available to save.');
+      return;
+    }
+    
+    try {
+      // Call the correct method name from YouTubeLiveSummary
+      await this.youtubeLiveSummary.handleSaveVideo();
+      
+      // Show success message
+      const button = document.getElementById('saveVideoBtn');
+      if (button) {
+        const originalHtml = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i>';
+        setTimeout(() => {
+          button.innerHTML = originalHtml;
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Error saving video:', error);
+      this.showErrorMessage(`Failed to save video data: ${error.message}`);
+    }
+  }
+
+  async saveCurrentSession() {
+    if (!this.currentVideoId || !this.youtubeLiveSummary) return;
+    
+    const sessionKey = `liveChatSession_${this.currentVideoId}`;
+    const sessionData = {
+      videoData: {
+        ...this.youtubeLiveSummary.currentVideoData,
+        // Include transcript in temporary session storage for quick restoration
+        transcript: this.youtubeLiveSummary.currentVideoData?.transcript || '',
+        timestampedTranscript: this.youtubeLiveSummary.currentVideoData?.timestampedTranscript || []
+      },
+      chatHistory: this.youtubeLiveSummary.chatHistory || [],
+      timestamp: Date.now()
+    };
+    
+    try {
+      await chrome.storage.local.set({ [sessionKey]: sessionData });
+      console.log('Temporary session saved for video:', this.currentVideoId);
+    } catch (error) {
+      console.error('Error saving temporary session:', error);
+    }
+  }
+
+  showNoVideoMessage() {
+    if (!this.chatContainer) return;
+    
+    this.chatContainer.innerHTML = `
+      <div class="chat-message error">
+        <div class="message-content">
+          <strong>No YouTube Video Detected</strong><br>
+          To use Live Summary:
+          <ol style="margin: 8px 0; padding-left: 20px;">
+            <li>Navigate to a YouTube video</li>
+            <li>Click the "Summarize Video" button below the video</li>
+            <li>The Live Summary will automatically open</li>
+          </ol>
+          Or you can manually switch to this tab when viewing a YouTube video.
+        </div>
+      </div>
+    `;
+  }
+
+  showErrorMessage(message) {
+    if (!this.chatContainer) return;
+    
+    this.chatContainer.innerHTML = `
+      <div class="chat-message error">
+        <div class="message-content">
+          <strong>Error</strong><br>
+          ${message}
+        </div>
+      </div>
+    `;
+  }
+
+  // Show loading state to prevent error flash
+  showLoadingState() {
+    if (!this.chatContainer) return;
+    
+    this.chatContainer.innerHTML = `
+      <div class="chat-message loading-state">
+        <div class="message-content" style="text-align: center; padding: 20px;">
+          <div class="typing-indicator" style="margin: 0 auto 12px auto; width: fit-content;">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <strong>Preparing Live Summary...</strong><br>
+          <span style="font-size: 12px; color: #666;">Loading video data and generating summary</span>
+        </div>
+      </div>
+    `;
+  }
+
+  async checkIfVideoSaved(videoId) {
+    try {
+      const result = await chrome.storage.local.get(['savedVideos']);
+      const savedVideos = result.savedVideos || [];
+      return savedVideos.find(v => v.videoId === videoId);
+    } catch (error) {
+      console.error('Error checking saved videos:', error);
+      return null;
+    }
+  }
+
+  updateSaveButtonState(isAlreadySaved) {
+    const saveButton = document.getElementById('saveVideoBtn');
+    if (!saveButton) return;
+    
+    if (isAlreadySaved) {
+      saveButton.disabled = true;
+      saveButton.innerHTML = '<i class="fas fa-check"></i> Already Saved';
+      saveButton.style.background = '#4caf50';
+      saveButton.style.cursor = 'not-allowed';
+    } else {
+      saveButton.disabled = false;
+      saveButton.innerHTML = '<i class="fas fa-save"></i>';
+      saveButton.style.background = '';
+      saveButton.style.cursor = 'pointer';
+    }
+  }
+
+  // Clean up old sessions (call this periodically)
+  async cleanupOldSessions() {
+    const storage = await chrome.storage.local.get(null);
+    const keysToRemove = [];
+    const cutoffTime = Date.now() - (7 * 24 * 60 * 60 * 1000); // 7 days
+    
+    for (const key in storage) {
+      if (key.startsWith('liveChatSession_')) {
+        const session = storage[key];
+        if (!session.timestamp || session.timestamp < cutoffTime) {
+          keysToRemove.push(key);
+        }
+      }
+    }
+    
+    if (keysToRemove.length > 0) {
+      await chrome.storage.local.remove(keysToRemove);
+      console.log('Cleaned up', keysToRemove.length, 'old chat sessions');
+    }
+  }
+}
+
+// Export for use in popup
+window.LiveChatManager = LiveChatManager;
