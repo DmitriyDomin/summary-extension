@@ -149,13 +149,6 @@ function setupModernInteractions() {
         closeLanguageModal.addEventListener('click', () => {
             languageModal.classList.remove('active');
         });
-        
-        // Close on backdrop click
-        languageModal.addEventListener('click', (e) => {
-            if (e.target === languageModal) {
-                languageModal.classList.remove('active');
-            }
-        });
     }
     
     // Language selection
@@ -304,6 +297,9 @@ function setupPageSpecificFeatures(pageId) {
         case 'liveSummaryPage':
             setupLiveSummaryFeatures();
             break;
+        case 'quizPage':
+            setupQuizPageFeatures();
+            break;
         case 'summariesPage':
             setupSummariesPageFeatures();
             break;
@@ -376,6 +372,24 @@ function setupLiveSummaryFeatures() {
                     sendButton.click();
                 }
             }
+        });
+    }
+}
+
+function setupQuizPageFeatures() {
+    console.log('Setting up quiz page features');
+    
+    // Notify quiz manager that the tab was activated
+    if (window.quizManager) {
+        window.quizManager.onTabActivated();
+    }
+    
+    // Setup quiz text input auto-resize
+    const quizCustomText = document.getElementById('quizCustomText');
+    if (quizCustomText) {
+        quizCustomText.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 300) + 'px';
         });
     }
 }

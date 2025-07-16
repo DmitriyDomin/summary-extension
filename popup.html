@@ -51,6 +51,10 @@
                 <i class="fas fa-play-circle"></i>
                 <span>Live Chat</span>
             </button>
+            <button class="nav-tab" id="menuQuiz" data-page="quizPage">
+                <i class="fas fa-question-circle"></i>
+                <span>Quiz</span>
+            </button>
             <button class="nav-tab" id="menuSummaries" data-page="summariesPage">
                 <i class="fas fa-bookmark"></i>
                 <span>Saved</span>
@@ -254,6 +258,135 @@
                                     <i class="fas fa-paper-plane"></i>
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quiz Page -->
+            <div class="page" id="quizPage">
+                <div class="page-header">
+                    <h2>
+                        <i class="fas fa-question-circle"></i>
+                        Quiz Generator
+                    </h2>
+                </div>
+
+                <!-- Quiz Input Section -->
+                <div class="content-card quiz-input-card" id="quizInputSection">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-edit"></i>
+                            Generate Quiz
+                        </h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="quiz-source-toggle">
+                            <button class="source-btn active" id="useVideoBtn">
+                                <i class="fas fa-video"></i>
+                                Current Video
+                            </button>
+                            <button class="source-btn" id="useTextBtn">
+                                <i class="fas fa-file-text"></i>
+                                Custom Text
+                            </button>
+                        </div>
+                        
+                        <!-- Video Info Display -->
+                        <div class="quiz-video-info" id="quizVideoInfo" style="display: none;">
+                            <div class="video-preview">
+                                <img id="quizVideoThumbnail" src="" alt="Video thumbnail">
+                                <div class="video-title" id="quizVideoTitle">No video selected</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Custom Text Input -->
+                        <div class="quiz-text-input" id="quizTextInput" style="display: none;">
+                            <textarea id="quizCustomText" placeholder="Paste your text here to generate quiz questions..." rows="6"></textarea>
+                        </div>
+                        
+                        <div class="quiz-settings">
+                            <div class="setting-row">
+                                <label>Number of Questions</label>
+                                <select id="questionCount">
+                                    <option value="5">5 Questions</option>
+                                    <option value="7" selected>7 Questions</option>
+                                    <option value="10">10 Questions</option>
+                                    <option value="15">15 Questions</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <button id="generateQuizBtn" class="primary-button">
+                            <i class="fas fa-magic"></i>
+                            <span>Generate Quiz</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quiz Display Section -->
+                <div class="content-card quiz-display-card" id="quizDisplaySection" style="display: none;">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-clipboard-list"></i>
+                            Quiz Questions
+                        </h3>
+                        <div class="quiz-progress">
+                            <span id="quizProgress">Question 1 of 7</span>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="quiz-container" id="quizContainer">
+                            <!-- Quiz questions will be dynamically generated here -->
+                        </div>
+                        
+                        <div class="quiz-actions">
+                            <button id="checkAnswersBtn" class="action-button" style="display: none;">
+                                <i class="fas fa-check-circle"></i>
+                                Check Answers
+                            </button>
+                            <button id="regenerateQuizBtn" class="action-button secondary">
+                                <i class="fas fa-redo"></i>
+                                Regenerate Quiz
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quiz Results Section -->
+                <div class="content-card quiz-results-card" id="quizResultsSection" style="display: none;">
+                    <div class="card-header">
+                        <h3>
+                            <i class="fas fa-trophy"></i>
+                            Quiz Results
+                        </h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="score-display">
+                            <div class="score-circle">
+                                <div class="score-number" id="scoreNumber">0</div>
+                                <div class="score-total" id="scoreTotal">/ 7</div>
+                            </div>
+                            <div class="score-percentage" id="scorePercentage">0%</div>
+                        </div>
+                        
+                        <div class="score-breakdown" id="scoreBreakdown">
+                            <!-- Results breakdown will be shown here -->
+                        </div>
+                        
+                        <div class="quiz-actions">
+                            <button id="seeResultsBtn" class="action-button">
+                                <i class="fas fa-eye"></i>
+                                See Results
+                            </button>
+                            <button id="retakeQuizBtn" class="primary-button">
+                                <i class="fas fa-redo"></i>
+                                Retake Quiz
+                            </button>
+                            <button id="newQuizBtn" class="action-button">
+                                <i class="fas fa-plus"></i>
+                                Generate New Quiz
+                            </button>
                         </div>
                     </div>
                 </div>

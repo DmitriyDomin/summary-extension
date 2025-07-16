@@ -27,6 +27,7 @@ function loadScript(src) {
     await loadScript('summaries-manager.js');
     await loadScript('live-chat-manager.js');
     await loadScript('settings-manager.js');
+    await loadScript('quiz-manager.js');
     
     // Load YouTube Live Summary class
     console.log('📦 Loading YouTube Live Summary...');

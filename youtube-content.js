@@ -109,11 +109,38 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'getSummaryTopic') {
     const topicElement = document.querySelector('#yt-summary-display h3');
     sendResponse({ value: topicElement ? topicElement.textContent : null });
-  } else if (request.action === 'getVideoData') {
-    // Return current video data for Live Summary
+  } else if (request.action === 'getCurrentVideoData') {
+    // Return current video data for Quiz Manager
     const videoId = getVideoId();
     if (videoId) {
-      const title = document.querySelector('h1.ytd-watch-metadata')?.textContent || 'YouTube Video';
+      const title = document.querySelector('h1.ytd-watch-metadata')?.textContent?.trim() || 'YouTube Video';
+      const videoUrl = window.location.href;
+      const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+      
+      sendResponse({
+        videoData: {
+          videoId,
+          title,
+          url: videoUrl,
+          thumbnail,
+          transcript: transcriptData || '', // Use cached transcript if available
+          timestampedTranscript: timestampedTranscriptData || null
+        }
+      });
+    } else {
+      sendResponse({ videoData: null });
+    }
+  } else if (request.action === 'getVideoTitle') {
+    // Get just the video title for Quiz Manager
+    const title = document.querySelector('h1.ytd-watch-metadata')?.textContent?.trim() || 
+                  document.querySelector('h1.ytd-video-primary-info-renderer')?.textContent?.trim() ||
+                  'YouTube Video';
+    sendResponse({ title });
+  } else if (request.action === 'getVideoData') {
+    // Return current video data for Live Summary (legacy compatibility)
+    const videoId = getVideoId();
+    if (videoId) {
+      const title = document.querySelector('h1.ytd-watch-metadata')?.textContent?.trim() || 'YouTube Video';
       const videoUrl = window.location.href;
       const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
       
@@ -591,12 +618,31 @@ function createSummarizeButton() {
   const buttonContainer = document.createElement('div');
   buttonContainer.id = 'yt-summary-button-container';
   buttonContainer.style.cssText = `
-    margin: 12px 0;
-    padding: 8px;
-    background: #f9f9f9;
-    border-radius: 8px;
-    border-left: 4px solid #ff0000;
+    margin: 16px 0;
+    padding: 16px;
+    background: #0f172a;
+    border-radius: 16px;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
   `;
+  
+  // Add hover effect
+  buttonContainer.addEventListener('mouseenter', () => {
+    buttonContainer.style.transform = 'translateY(-2px)';
+    buttonContainer.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)';
+    buttonContainer.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+  });
+  
+  buttonContainer.addEventListener('mouseleave', () => {
+    buttonContainer.style.transform = 'translateY(0)';
+    buttonContainer.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
+    buttonContainer.style.borderColor = 'rgba(59, 130, 246, 0.2)';
+  });
   
   // Create summarize button
   summaryButton = document.createElement('button');

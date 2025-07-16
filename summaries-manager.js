@@ -106,6 +106,10 @@ class SummariesManager {
                 <i class="fas fa-comments"></i>
                 <span>Chat</span>
               </button>
+              <button class="video-action-btn copy-transcript-btn" data-video-id="${video.videoId}" title="Copy transcript">
+                <i class="fas fa-copy"></i>
+                <span>Copy Transcript</span>
+              </button>
               <button class="video-action-btn delete-btn video-delete-btn" data-video-index="${index}" title="Delete video">
                 <i class="fas fa-trash-alt"></i>
                 <span>Delete</span>
@@ -143,6 +147,14 @@ class SummariesManager {
         this.deleteVideo(index);
       });
     });
+
+    this.container.querySelectorAll('.copy-transcript-btn').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const videoId = button.getAttribute('data-video-id');
+        this.copyTranscript(videoId);
+      });
+    });
   }
 
   async deleteSummary(index) {
@@ -169,6 +181,26 @@ class SummariesManager {
       } catch (error) {
         console.error('Failed to copy summary:', error);
       }
+    }
+  }
+
+  async copyTranscript(videoId) {
+    const video = await this.loadSavedVideo(videoId);
+    if (!video || !video.transcript) return;
+    
+    try {
+      await navigator.clipboard.writeText(video.transcript);
+      // Show a brief success indication
+      const button = this.container.querySelector(`[data-video-id="${videoId}"].copy-transcript-btn`);
+      if (button) {
+        const originalHtml = button.innerHTML;
+        button.innerHTML = '<span><i class="fas fa-check"></i></span>';
+        setTimeout(() => {
+          button.innerHTML = originalHtml;
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Failed to copy transcript:', error);
     }
   }
 
@@ -221,13 +253,6 @@ class SummariesManager {
       const videoId = modal.querySelector('.load-in-chat-btn').getAttribute('data-video-id');
       this.loadVideoInLiveChat(videoId);
       modal.remove();
-    });
-
-    // Close modal when clicking outside
-    modal.addEventListener('click', (event) => {
-      if (event.target === modal) {
-        modal.remove();
-      }
     });
   }
 
