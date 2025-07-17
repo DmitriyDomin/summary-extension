@@ -875,33 +875,33 @@ async function handleSummarize() {
       // const summary = await makeApiRequest(prompt);
       
       // Parse the summary
-      let [cleanSummary, originalLang] = getLanguage(summary);
-      let [finalSummary, topic] = parseText(cleanSummary);
+      // let [cleanSummary, originalLang] = getLanguage(summary || '');
+      // let [finalSummary, topic] = parseText(cleanSummary);
       
-      // Create initial chat history with the summary
-      const initialChatHistory = [{
-        type: 'summary',
-        message: 'Generate a summary of this video',
-        response: finalSummary,
-        timestamp: new Date().toISOString()
-      }];
+      // // Create initial chat history with the summary
+      // const initialChatHistory = [{
+      //   type: 'summary',
+      //   message: 'Generate a summary of this video',
+      //   response: finalSummary,
+      //   timestamp: new Date().toISOString()
+      // }];
       
-      const videoUrl = window.location.href;
-      const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+      // const videoUrl = window.location.href;
+      // const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
       
-      videoData = {
-        videoId,
-        title,
-        url: videoUrl,
-        thumbnail,
-        transcript: transcriptResult.transcript,
-        timestampedTranscript: transcriptResult.timestampedTranscript,
-        chatHistory: initialChatHistory,
-        isNewVideo: true
-      };
+      // videoData = {
+      //   videoId,
+      //   title,
+      //   url: videoUrl,
+      //   thumbnail,
+      //   transcript: transcriptResult.transcript,
+      //   timestampedTranscript: transcriptResult.timestampedTranscript,
+      //   chatHistory: initialChatHistory,
+      //   isNewVideo: true
+      // };
       
       // Send topic to popup for saving
-      chrome.runtime.sendMessage({ action: "updateTags", data: topic || title });
+      chrome.runtime.sendMessage({ action: "updateTags", data: title });
       
     } catch (apiError) {
       console.error('Error generating summary:', apiError);
@@ -909,16 +909,16 @@ async function handleSummarize() {
       const videoUrl = window.location.href;
       const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
       
-      videoData = {
-        videoId,
-        title,
-        url: videoUrl,
-        thumbnail,
-        transcript: transcriptResult.transcript,
-        timestampedTranscript: transcriptResult.timestampedTranscript,
-        chatHistory: [],
-        isNewVideo: true
-      };
+      // videoData = {
+      //   videoId,
+      //   title,
+      //   url: videoUrl,
+      //   thumbnail,
+      //   transcript: transcriptResult.transcript,
+      //   timestampedTranscript: transcriptResult.timestampedTranscript,
+      //   chatHistory: [],
+      //   isNewVideo: true
+      // };
     }
     
     // Update button to show opening popup
@@ -931,7 +931,7 @@ async function handleSummarize() {
     console.log('🎬 Sending openLiveSummary message with new video data:', videoData);
     chrome.runtime.sendMessage({
       action: 'openLiveSummary',
-      videoData: videoData
+      videoData: {}
     }, (response) => {
       console.log('Response from background script:', response);
       showLiveSummaryMessage('New summary created!', 'A fresh summary has been generated. You can now chat about this video.');

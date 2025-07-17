@@ -607,8 +607,8 @@ async function handleAutoOpenLiveTab() {
     if (response && response.shouldOpenLiveTab && response.videoData) {
       console.log('🔍 Auto-switching to Live Summary tab with video data:', response.videoData.title);
       
-      // Force switch to Live Summary tab immediately
-      await forceSwitchToLiveTab();
+      // Force switch to Live Summary tab immediately with video data
+      await forceSwitchToLiveTab(response.videoData);
       
       // Initialize Live Chat Manager with video data
       setTimeout(async () => {
@@ -639,8 +639,8 @@ async function handleAutoOpenLiveTab() {
 }
 
 // Force switch to Live Summary tab (bypassing tab switcher timing issues)
-async function forceSwitchToLiveTab() {
-  console.log('🔄 FORCE SWITCH: forceSwitchToLiveTab() called');
+async function forceSwitchToLiveTab(videoData = null) {
+  console.log('🔄 FORCE SWITCH: forceSwitchToLiveTab() called with videoData:', videoData?.title);
   
   // Wait for DOM elements to be ready
   let attempts = 0;
@@ -705,10 +705,10 @@ async function forceSwitchToLiveTab() {
       if (isTabActive && isPageActive) {
         console.log('🔄 FORCE SWITCH: ✅ Successfully switched to Live Summary tab');
         
-        // Also call the page switch handler
+        // Also call the page switch handler with videoId if available
         if (window.handlePageSwitch) {
-          console.log('🔄 FORCE SWITCH: Calling handlePageSwitch for liveSummaryPage');
-          await window.handlePageSwitch('liveSummaryPage');
+          console.log('🔄 FORCE SWITCH: Calling handlePageSwitch for liveSummaryPage with videoId:', videoData?.videoId);
+          await window.handlePageSwitch('liveSummaryPage', videoData?.videoId);
         }
         
         return true;
@@ -778,19 +778,27 @@ function setupRuntimeMessageListener() {
 }
 
 // Page switching handlers (to work with tab-switcher.js)
-window.handlePageSwitch = async function(targetPageId) {
-  console.log('Handling page switch to:', targetPageId);
+window.handlePageSwitch = async function(targetPageId, videoId = null) {
+  console.log('Handling page switch to:', targetPageId, 'with videoId:', videoId);
   
   try {
     if (targetPageId === 'liveSummaryPage') {
       // Check if LiveChatManager already exists and is initialized
       if (liveChatManager && liveChatManager.isInitialized && liveChatManager.currentVideoId) {
-        console.log('🎬 LiveChatManager already initialized with video:', liveChatManager.currentVideoId, '- preserving state');
-        // Just ensure the UI is updated, don't re-initialize
-        if (liveChatManager.youtubeLiveSummary && liveChatManager.youtubeLiveSummary.currentVideoData) {
-          liveChatManager.updateVideoInfo(liveChatManager.youtubeLiveSummary.currentVideoData);
+        console.log('🎬 LiveChatManager already initialized with video:', liveChatManager.currentVideoId);
+        
+        // Compare video IDs - only skip re-initialization if they match
+        if (videoId && liveChatManager.currentVideoId !== videoId) {
+          console.log('🎬 Different video requested, re-initializing with new video:', videoId);
+          // Don't return early - proceed to reinitialize with new video
+        } else if (!videoId || liveChatManager.currentVideoId === videoId) {
+          console.log('🎬 Same video or no specific video requested - preserving state');
+          // Just ensure the UI is updated, don't re-initialize
+          if (liveChatManager.youtubeLiveSummary && liveChatManager.youtubeLiveSummary.currentVideoData) {
+            liveChatManager.updateVideoInfo(liveChatManager.youtubeLiveSummary.currentVideoData);
+          }
+          return; // Don't re-initialize
         }
-        return; // Don't re-initialize
       }
       
       if (!liveChatManager) {

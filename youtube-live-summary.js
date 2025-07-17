@@ -34,6 +34,8 @@ class YouTubeLiveSummary {
         // ONLY mark as saved if this data came from a manually saved video
         if (videoData.isFromSavedVideo) {
           this.updateSaveButtonForSavedVideo();
+        } else {
+          this.updateSaveButtonToDefault();
         }
       } else {
         // Check if this video is saved in storage (fallback check)
@@ -182,6 +184,17 @@ class YouTubeLiveSummary {
       saveBtn.style.background = '#4caf50';
       saveBtn.style.cursor = 'not-allowed';
       saveBtn.title = 'Video already saved';
+    }
+  }
+
+  updateSaveButtonToDefault() {
+    const saveBtn = document.getElementById('saveVideoBtn');
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<i class="fas fa-bookmark"></i>';
+      saveBtn.style.background = '';
+      saveBtn.style.cursor = 'pointer';
+      saveBtn.title = 'Save video data';
     }
   }
 
@@ -1156,7 +1169,7 @@ Based on the video content above, please provide a detailed and helpful response
         // Reset button
         if (saveBtn) {
           saveBtn.disabled = false;
-          saveBtn.innerHTML = '<i class="fas fa-save"></i>';
+          saveBtn.innerHTML = '<i class="fas fa-bookmark"></i>';
         }
         return;
       }
@@ -1280,7 +1293,7 @@ Based on the video content above, please provide a detailed and helpful response
       // Reset button on error
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="fas fa-save"></i>';
+        saveBtn.innerHTML = '<i class="fas fa-bookmark"></i>';
       }
     }
   }

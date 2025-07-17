@@ -89,7 +89,7 @@ function switchToModernPage(clickedTab) {
                 
                 // Call the page switch handler from popup.js if available
                 if (window.handlePageSwitch) {
-                    window.handlePageSwitch(targetPageId);
+                    window.handlePageSwitch(targetPageId, clickedTab.dataset.videoId);
                 }
                 
                 // Trigger any page-specific setup

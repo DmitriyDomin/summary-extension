@@ -73,6 +73,7 @@ class LiveChatManager {
     }
   }
 
+  // Setup event listeners for live chat functionality
   setupEventListeners() {
     const sendButton = document.getElementById('sendMessageBtn');
     const chatInput = document.getElementById('chatInput');
@@ -89,6 +90,12 @@ class LiveChatManager {
           this.sendMessage();
         }
       });
+    }
+
+    // Go Back button event listener
+    const goBackBtn = document.getElementById('goBackToCurrentBtn');
+    if (goBackBtn) {
+      goBackBtn.addEventListener('click', () => this.goBackToCurrentVideo());
     }
 
     // Save button is handled by YouTubeLiveSummary to avoid conflicts
@@ -191,37 +198,65 @@ class LiveChatManager {
         return;
       }
       
-      // Use background script to communicate with content script
-      const response = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ 
-          action: 'getCurrentVideoInfo',
-          tabId: activeTab.id  // Pass the specific tab ID
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else {
-            resolve(response);
-          }
-        });
-      });
+      // Use background script to communicate with content script with retry logic
+      let attempts = 0;
+      const maxAttempts = 3;
       
-      if (response && response.videoData) {
-        console.log('🎬 Found current video data:', response.videoData.title);
-        const fallbackVideoData = {
-          ...response.videoData,
-          isFromCurrentPage: true
-        };
-        
-        await this.initializeWithCurrentVideo(fallbackVideoData);
-        return;
+      while (attempts < maxAttempts) {
+        try {
+          const response = await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Timeout')), 5000);
+            
+            chrome.runtime.sendMessage({ 
+              action: 'getCurrentVideoInfo',
+              tabId: activeTab.id  // Pass the specific tab ID
+            }, (response) => {
+              clearTimeout(timeout);
+              if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+              } else {
+                resolve(response);
+              }
+            });
+          });
+          
+          if (response && response.videoData) {
+            console.log('🎬 Found current video data:', response.videoData.title);
+            const fallbackVideoData = {
+              ...response.videoData,
+              isFromCurrentPage: true
+            };
+            
+            await this.initializeWithCurrentVideo(fallbackVideoData);
+            return;
+          } else if (response && response.error) {
+            console.log('🎬 Background script error:', response.error);
+            if (response.error.includes('Not a YouTube page')) {
+              this.showNoVideoMessage();
+              return;
+            }
+          }
+          
+          throw new Error('No video data received');
+          
+        } catch (error) {
+          attempts++;
+          console.log(`🎬 Attempt ${attempts} failed:`, error.message);
+          
+          if (attempts < maxAttempts) {
+            console.log(`🎬 Retrying in ${attempts * 1000}ms...`);
+            await new Promise(resolve => setTimeout(resolve, attempts * 1000));
+          }
+        }
       }
+      
+      console.log('🎬 All attempts failed, showing no video message');
+      this.showNoVideoMessage();
+      
     } catch (error) {
       console.log('🎬 Could not get current video info:', error.message);
+      this.showNoVideoMessage();
     }
-    
-    // Final fallback: show no video message
-    console.log('🎬 No video data available from any source');
-    this.showNoVideoMessage();
   }
 
   async initializeWithCurrentVideo(videoData = null) {
@@ -483,6 +518,13 @@ class LiveChatManager {
       isFromSavedVideo: videoData.isFromSavedVideo ?? (chatHistory && chatHistory.length > 0 && !videoData.isNewVideo)
     };
     
+    // Show Go Back button if this is a saved video (not from temporary storage)
+    if (videoDataWithHistory.isFromSavedVideo) {
+      this.updateGoBackButtonVisibility(true);
+    } else {
+      this.updateGoBackButtonVisibility(false);
+    }
+    
     // Initialize with video data
     await this.youtubeLiveSummary.initialize(videoDataWithHistory);
     this.updateVideoInfo(videoData);
@@ -648,6 +690,51 @@ class LiveChatManager {
       saveButton.style.background = '';
       saveButton.style.cursor = 'pointer';
       saveButton.title = 'Save video data';
+    }
+  }
+
+  // Go back to current video from temporary storage
+  async goBackToCurrentVideo() {
+    console.log('🔄 Going back to current video from temporary storage...');
+    this.restorePreviousSession();
+    // try {
+    //   // Get current video data from background script (temporary storage)
+    //   const response = await new Promise((resolve, reject) => {
+    //     chrome.runtime.sendMessage({ action: 'getVideoData' }, (response) => {
+    //       if (chrome.runtime.lastError) {
+    //         reject(chrome.runtime.lastError);
+    //       } else {
+    //         resolve(response);
+    //       }
+    //     });
+    //   });
+      
+    //   if (response && response.videoData && !response.isFromSavedVideo) {
+    //     console.log('🔄 Found current video in temporary storage:', response.videoData.title);
+        
+    //     // Load the temporary video data
+    //     await this.loadVideoWithHistory(response.videoData, response.videoData.chatHistory || []);
+        
+    //     // Hide the go back button since we're now on the current video
+    //     this.updateGoBackButtonVisibility(false);
+        
+    //     console.log('🔄 Successfully switched back to current video');
+    //   } else {
+    //     console.log('🔄 No current video found in temporary storage');
+    //     // Try to get video from active YouTube tab
+    //     await this.tryGetCurrentVideoInfo();
+    //   }
+    // } catch (error) {
+    //   console.error('🔄 Error going back to current video:', error);
+    //   this.showErrorMessage('Could not load current video. Please try refreshing the page.');
+    // }
+  }
+
+  // Update Go Back button visibility based on whether we're viewing a saved video
+  updateGoBackButtonVisibility(show = false) {
+    const goBackBtn = document.getElementById('goBackToCurrentBtn');
+    if (goBackBtn) {
+      goBackBtn.style.display = show ? 'flex' : 'none';
     }
   }
 

@@ -738,6 +738,7 @@ body {
 
 .video-header {
   display: flex;
+  flex-direction: column;
   gap: var(--space-lg);
   padding: var(--space-lg);
 }
@@ -1284,6 +1285,7 @@ input:checked + .slider:before {
 .video-action-btn {
   display: flex;
   align-items: center;
+  margin: 8px;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
   border: none;
@@ -1347,11 +1349,46 @@ input:checked + .slider:before {
 
 .video-actions {
   display: flex;
-  gap: var(--space-sm);
-  margin-top: var(--space-md);
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: var(--space-md);
 }
 
+/* Video Actions - Go Back Button */
+.go-back-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border: 2px solid var(--accent-primary);
+  border-radius: var(--radius-lg);
+  color: var(--accent-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+}
+
+.go-back-btn:hover {
+  background: var(--accent-primary);
+  color: var(--text-white);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.go-back-btn i {
+  font-size: 14px;
+  transition: transform 0.3s ease;
+}
+
+.go-back-btn:hover i {
+  transform: translateX(-2px);
+}
+
+/* Section Separators */
 .section-separator {
   margin: var(--space-2xl) 0 var(--space-lg) 0;
   padding: var(--space-lg) 0;

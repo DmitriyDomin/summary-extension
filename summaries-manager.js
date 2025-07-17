@@ -108,7 +108,7 @@ class SummariesManager {
               </button>
               <button class="video-action-btn copy-transcript-btn" data-video-id="${video.videoId}" title="Copy transcript">
                 <i class="fas fa-copy"></i>
-                <span>Copy Transcript</span>
+                <span>Transcript</span>
               </button>
               <button class="video-action-btn delete-btn video-delete-btn" data-video-index="${index}" title="Delete video">
                 <i class="fas fa-trash-alt"></i>
