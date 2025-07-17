@@ -99,24 +99,27 @@ class LiveChatManager {
     console.log('🎬 LiveChatManager: Attempting to restore previous session...');
     
     try {
-      // Check if we're on a YouTube video page
-      const activeTab = await new Promise((resolve) =>
-        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
-      );
-
-      if (!activeTab.url || !activeTab.url.includes('youtube.com/watch')) {
-        console.log('🎬 Not on YouTube video page, showing no video message');
-        // this.showNoVideoMessage();
-        return;
+      // FIXED: Use cross-window tab detection instead of problematic chrome.tabs.query
+      const windows = await chrome.windows.getAll({ populate: true });
+      let activeTab = null;
+      let currentVideoId = null;
+      
+      // Look for active YouTube tabs across all windows
+      for (const window of windows) {
+        const activeTabInWindow = window.tabs.find(tab => tab.active);
+        if (activeTabInWindow && activeTabInWindow.url && activeTabInWindow.url.includes('youtube.com/watch')) {
+          activeTab = activeTabInWindow;
+          // Extract video ID from URL
+          const urlParams = new URLSearchParams(new URL(activeTab.url).search);
+          currentVideoId = urlParams.get('v');
+          console.log('🎬 Found active YouTube tab with video ID:', currentVideoId);
+          break;
+        }
       }
 
-      // Extract video ID from current URL
-      const urlParams = new URLSearchParams(new URL(activeTab.url).search);
-      const currentVideoId = urlParams.get('v');
-
-      if (!currentVideoId) {
-        console.log('🎬 No video ID found in URL');
-        this.showNoVideoMessage();
+      if (!activeTab || !currentVideoId) {
+        console.log('🎬 No active YouTube video found, trying to get current video info...');
+        await this.tryGetCurrentVideoInfo();
         return;
       }
 
@@ -154,81 +157,71 @@ class LiveChatManager {
         return;
       }
 
-      // 3. Try to get current video data - with better error handling
-      let currentVideoData = null;
-      
-      // First try content script with timeout
-      try {
-        console.log('🎬 Trying to get video data from content script...');
-        const contentResponse = await Promise.race([
-          new Promise((resolve, reject) => {
-            chrome.tabs.sendMessage(activeTab.id, { action: 'getVideoData' }, (response) => {
-              if (chrome.runtime.lastError) {
-                reject(chrome.runtime.lastError);
-              } else {
-                resolve(response);
-              }
-            });
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Content script timeout')), 2000))
-        ]);
-        
-        if (contentResponse && contentResponse.videoData) {
-          currentVideoData = contentResponse.videoData;
-          console.log('🎬 Got current video data from content script:', currentVideoData.title);
-        }
-      } catch (error) {
-        console.log('🎬 Content script not available or timed out:', error.message);
-      }
-
-      // If content script failed, try background script
-      if (!currentVideoData) {
-        try {
-          console.log('🎬 Trying to get video data from background script...');
-          const response = await Promise.race([
-            new Promise((resolve, reject) => {
-              chrome.runtime.sendMessage({ action: 'getVideoData' }, (response) => {
-                if (chrome.runtime.lastError) {
-                  reject(chrome.runtime.lastError);
-                } else {
-                  resolve(response);
-                }
-              });
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 1500))
-          ]);
-          
-          if (response && response.videoData) {
-            currentVideoData = response.videoData;
-            console.log('🎬 Found video data from background script:', currentVideoData.title);
-          }
-        } catch (error) {
-          console.log('🎬 Background script not available or timed out:', error.message);
-        }
-      }
-
-      // If we have current video data, initialize fresh
-      if (currentVideoData) {
-        console.log('🎬 Initializing fresh video:', currentVideoData.title);
-        await this.initializeWithCurrentVideo(currentVideoData);
-        return;
-      }
-
-      // Last resort: create minimal video data from URL for graceful degradation
-      console.log('🎬 Creating minimal video data from URL as fallback');
-      const fallbackVideoData = {
-        videoId: currentVideoId,
-        title: 'YouTube Video',
-        url: activeTab.url,
-        thumbnail: `https://img.youtube.com/vi/${currentVideoId}/maxresdefault.jpg`
-      };
-      
-      await this.initializeWithCurrentVideo(fallbackVideoData);
+      // 3. Try to get current video data using the found active tab
+      await this.tryGetCurrentVideoInfo();
       
     } catch (error) {
       console.error('🎬 Error in restorePreviousSession:', error);
       this.showNoVideoMessage();
     }
+  }
+
+  // FIXED: New method to get current video info through background script
+  async tryGetCurrentVideoInfo() {
+    console.log('🎬 Trying to get current video info...');
+    
+    try {
+      // FIXED: In side panel context, we need to get the current tab differently
+      // First try to get the active tab from all windows
+      const windows = await chrome.windows.getAll({ populate: true });
+      let activeTab = null;
+      
+      for (const window of windows) {
+        const activeTabInWindow = window.tabs.find(tab => tab.active);
+        if (activeTabInWindow && activeTabInWindow.url && activeTabInWindow.url.includes('youtube.com/watch')) {
+          activeTab = activeTabInWindow;
+          console.log('🎬 Found active YouTube tab:', activeTab.title);
+          break;
+        }
+      }
+      
+      if (!activeTab) {
+        console.log('🎬 No active YouTube tab found in any window');
+        this.showNoVideoMessage();
+        return;
+      }
+      
+      // Use background script to communicate with content script
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ 
+          action: 'getCurrentVideoInfo',
+          tabId: activeTab.id  // Pass the specific tab ID
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve(response);
+          }
+        });
+      });
+      
+      if (response && response.videoData) {
+        console.log('🎬 Found current video data:', response.videoData.title);
+        const fallbackVideoData = {
+          ...response.videoData,
+          isFromCurrentPage: true
+        };
+        
+        await this.initializeWithCurrentVideo(fallbackVideoData);
+        return;
+      }
+    } catch (error) {
+      console.log('🎬 Could not get current video info:', error.message);
+    }
+    
+    // Final fallback: show no video message
+    console.log('🎬 No video data available from any source');
+    this.showNoVideoMessage();
   }
 
   async initializeWithCurrentVideo(videoData = null) {
@@ -330,11 +323,21 @@ class LiveChatManager {
     
     // Try content script as fallback
     try {
-      const activeTab = await new Promise((resolve) =>
-        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
-      );
+      // FIXED: Use cross-window tab detection instead of problematic chrome.tabs.query
+      const windows = await chrome.windows.getAll({ populate: true });
+      let activeTab = null;
       
-      if (activeTab.url && activeTab.url.includes('youtube.com/watch')) {
+      // Look for active YouTube tabs across all windows
+      for (const window of windows) {
+        const activeTabInWindow = window.tabs.find(tab => tab.active);
+        if (activeTabInWindow && activeTabInWindow.url && activeTabInWindow.url.includes('youtube.com/watch')) {
+          activeTab = activeTabInWindow;
+          console.log('🎬 Found active YouTube tab for content script fallback:', activeTab.title);
+          break;
+        }
+      }
+      
+      if (activeTab) {
         const response = await Promise.race([
           new Promise((resolve, reject) => {
             chrome.tabs.sendMessage(activeTab.id, { action: 'getVideoData' }, (response) => {
@@ -427,13 +430,24 @@ class LiveChatManager {
       console.log('Fetching fresh transcript for saved video:', videoData.videoId);
       
       try {
-        // Try to get fresh transcript from YouTube
-        const activeTab = await new Promise((resolve) =>
-          chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => resolve(tab))
-        );
+        // FIXED: Use cross-window tab detection instead of problematic chrome.tabs.query
+        const windows = await chrome.windows.getAll({ populate: true });
+        let activeTab = null;
+        
+        // Look for the specific YouTube video tab across all windows
+        for (const window of windows) {
+          for (const tab of window.tabs) {
+            if (tab.url && tab.url.includes('youtube.com/watch') && tab.url.includes(videoData.videoId)) {
+              activeTab = tab;
+              console.log('🎬 Found matching YouTube video tab:', tab.title);
+              break;
+            }
+          }
+          if (activeTab) break;
+        }
         
         // Check if we're on the same YouTube video
-        if (activeTab.url && activeTab.url.includes('youtube.com/watch') && activeTab.url.includes(videoData.videoId)) {
+        if (activeTab) {
           const transcriptResponse = await new Promise((resolve, reject) => {
             chrome.tabs.sendMessage(activeTab.id, { 
               action: 'fetchTranscript', 
@@ -453,7 +467,7 @@ class LiveChatManager {
             console.log('Fresh transcript fetched successfully');
           }
         } else {
-          console.log('Not on YouTube video page, will work without transcript');
+          console.log('Matching YouTube video tab not found, will work without transcript');
         }
       } catch (error) {
         console.log('Could not fetch fresh transcript:', error);
@@ -624,14 +638,16 @@ class LiveChatManager {
     
     if (isAlreadySaved) {
       saveButton.disabled = true;
-      saveButton.innerHTML = '<i class="fas fa-check"></i> Already Saved';
+      saveButton.innerHTML = '<i class="fas fa-check"></i>';
       saveButton.style.background = '#4caf50';
       saveButton.style.cursor = 'not-allowed';
+      saveButton.title = 'Video already saved';
     } else {
       saveButton.disabled = false;
-      saveButton.innerHTML = '<i class="fas fa-save"></i>';
+      saveButton.innerHTML = '<i class="fas fa-bookmark"></i>';
       saveButton.style.background = '';
       saveButton.style.cursor = 'pointer';
+      saveButton.title = 'Save video data';
     }
   }
 

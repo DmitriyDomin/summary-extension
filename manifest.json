@@ -9,14 +9,12 @@
     }
   ],
   "description": "Generate summaries of web content using GPT-4 API.",
-  "permissions": ["contextMenus", "activeTab", "storage"],
+  "permissions": ["contextMenus", "activeTab", "tabs", "storage", "sidePanel"],
   "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "24": "images/icon24.png",
-      "48": "images/icon48.png",
-      "128": "images/icon128.png"
-    }
+    "default_title": "Open side panel"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
   },
   "background": {
     "service_worker": "background.js"

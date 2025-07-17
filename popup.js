@@ -14,22 +14,31 @@ async function checkPaymentStatus() {
 
 // Main popup initialization
 async function initializePopup() {
-  console.log('🚀 POPUP: Popup initializing...');
+  console.log('🚀 Popup initializing...');
   
   try {
+    // Initialize managers first
     await initializeManagers();
+    
+    // Set up all event listeners
     setupHomePageEventListeners();
-    await loadInitialSettings();
-    
-    // Handle auto-opening live summary
-    await handleAutoOpenLiveTab();
-    
-    // Set up runtime message listener
+    setupSettingsEventListeners();
     setupRuntimeMessageListener();
     
-    console.log('🚀 POPUP: Popup initialization complete');
+    // Load settings and initial data
+    await loadInitialSettings();
+    await loadCurrentSummaryTopic();
+    
+    // CRITICAL: Check for video data waiting and auto-open live tab
+    await handleAutoOpenLiveTab();
+    
+    console.log('✅ Popup initialized successfully');
+    
+    // Dispatch custom event to indicate popup is ready
+    document.dispatchEvent(new CustomEvent('popupInitialized'));
+    
   } catch (error) {
-    console.error('🚀 POPUP: Error during popup initialization:', error);
+    console.error('❌ Error initializing popup:', error);
   }
 }
 

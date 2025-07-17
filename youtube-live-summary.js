@@ -178,7 +178,7 @@ class YouTubeLiveSummary {
     const saveBtn = document.getElementById('saveVideoBtn');
     if (saveBtn) {
       saveBtn.disabled = true;
-      saveBtn.innerHTML = '<i class="fas fa-check"></i> Saved';
+      saveBtn.innerHTML = '<i class="fas fa-check"></i>';
       saveBtn.style.background = '#4caf50';
       saveBtn.style.cursor = 'not-allowed';
       saveBtn.title = 'Video already saved';
@@ -1134,7 +1134,8 @@ Based on the video content above, please provide a detailed and helpful response
     const saveBtn = document.getElementById('saveVideoBtn');
     if (saveBtn) {
       saveBtn.disabled = true;
-      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+      saveBtn.title = 'Saving video...';
     }
 
     try {

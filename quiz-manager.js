@@ -70,63 +70,94 @@ class QuizManager {
   async checkCurrentVideo() {
     // Check if we're on a YouTube page and get current video data
     try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const activeTab = tabs[0];
+      // FIXED: In side panel context, we need to find YouTube tabs across all windows
+      const windows = await chrome.windows.getAll({ populate: true });
+      let activeTab = null;
       
-      if (activeTab.url && activeTab.url.includes('youtube.com/watch')) {
+      // Look for active YouTube tabs across all windows
+      for (const window of windows) {
+        const activeTabInWindow = window.tabs.find(tab => tab.active);
+        if (activeTabInWindow && activeTabInWindow.url && activeTabInWindow.url.includes('youtube.com/watch')) {
+          activeTab = activeTabInWindow;
+          console.log('🎯 Found active YouTube tab:', activeTab.title);
+          break;
+        }
+      }
+      
+      if (activeTab) {
         console.log('🎯 Detected YouTube page, getting video data...');
         
-        // First, try to get video data from the live summary manager if available
-        if (window.youtubeLiveSummary && window.youtubeLiveSummary.currentVideoData) {
-          console.log('🎯 Found video data from live summary manager');
-          this.currentVideoData = window.youtubeLiveSummary.currentVideoData;
+        // FIXED: First, try to get video data from the live summary manager if available
+        if (window.liveChatManager && window.liveChatManager.youtubeLiveSummary && window.liveChatManager.youtubeLiveSummary.currentVideoData) {
+          console.log('🎯 Found video data from live chat manager');
+          this.currentVideoData = window.liveChatManager.youtubeLiveSummary.currentVideoData;
           this.updateVideoDisplay();
           return;
         }
         
-        // If no live summary data, try to get video data from the content script
+        // FIXED: Second, check background script for video data
         try {
-          const response = await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('Timeout getting video data')), 10000);
-            
-            chrome.tabs.sendMessage(activeTab.id, { action: 'getCurrentVideoData' }, (response) => {
-              clearTimeout(timeout);
+          const backgroundResponse = await new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({ action: 'getVideoData' }, (response) => {
               if (chrome.runtime.lastError) {
-                reject(new Error(chrome.runtime.lastError.message));
+                reject(chrome.runtime.lastError);
               } else {
                 resolve(response);
               }
             });
           });
           
-          if (response && response.videoData) {
-            console.log('🎯 Got video data from content script:', response.videoData.title);
-            this.currentVideoData = response.videoData;
+          if (backgroundResponse && backgroundResponse.videoData) {
+            console.log('🎯 Found video data from background script');
+            this.currentVideoData = backgroundResponse.videoData;
             this.updateVideoDisplay();
             return;
           }
         } catch (error) {
-          console.log('🎯 Could not get video data from content script:', error.message);
+          console.log('🎯 No video data in background script:', error.message);
         }
         
-        // If both methods fail, try to extract video ID from URL and fetch data manually
+        // FIXED: Third, use improved background communication for current video info
+        try {
+          const currentVideoResponse = await new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({ 
+              action: 'getCurrentVideoInfo',
+              tabId: activeTab.id  // Pass the specific tab ID
+            }, (response) => {
+              if (chrome.runtime.lastError) {
+                reject(chrome.runtime.lastError);
+              } else {
+                resolve(response);
+              }
+            });
+          });
+          
+          if (currentVideoResponse && currentVideoResponse.videoData) {
+            console.log('🎯 Got video data via background communication:', currentVideoResponse.videoData.title);
+            this.currentVideoData = currentVideoResponse.videoData;
+            this.updateVideoDisplay();
+            return;
+          }
+        } catch (error) {
+          console.log('🎯 Could not get video data via background communication:', error.message);
+        }
+        
+        // If we reach here, try to extract video ID from URL and fetch data manually
         const videoIdMatch = activeTab.url.match(/[?&]v=([^&]+)/);
         if (videoIdMatch) {
           const videoId = videoIdMatch[1];
           console.log('🎯 Extracted video ID from URL:', videoId);
           
           try {
-            // Try to get transcript using content script
+            // FIXED: Use background script to fetch transcript for better communication
             const transcriptResponse = await new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => reject(new Error('Timeout getting transcript')), 15000);
-              
-              chrome.tabs.sendMessage(activeTab.id, { 
-                action: 'fetchTranscript', 
-                videoId: videoId 
+              chrome.runtime.sendMessage({ 
+                action: 'fetchTranscriptForSidePanel', 
+                videoId: videoId,
+                tabId: activeTab.id  // Pass the specific tab ID
               }, (response) => {
-                clearTimeout(timeout);
                 if (chrome.runtime.lastError) {
-                  reject(new Error(chrome.runtime.lastError.message));
+                  reject(chrome.runtime.lastError);
                 } else {
                   resolve(response);
                 }
@@ -134,7 +165,7 @@ class QuizManager {
             });
             
             if (transcriptResponse && transcriptResponse.transcript) {
-              console.log('🎯 Successfully fetched transcript directly');
+              console.log('🎯 Successfully fetched transcript via background communication');
               
               // Get basic video info from the page
               const videoTitle = await this.getVideoTitleFromPage(activeTab.id);
@@ -153,7 +184,7 @@ class QuizManager {
               return;
             }
           } catch (error) {
-            console.log('🎯 Could not fetch transcript directly:', error.message);
+            console.log('🎯 Could not fetch transcript via background communication:', error.message);
           }
         }
       }
