@@ -350,6 +350,7 @@ async function loadInitialSettings() {
       'textLength',
       'apiKey',
       'googleApiKey',
+      'n8nEndpoint',
       'aiProvider'
     ]);
     
@@ -373,6 +374,11 @@ async function loadInitialSettings() {
     if (storage.googleApiKey) {
       const googleApiKeyInput = document.getElementById('googleApiKeyInput');
       if (googleApiKeyInput) googleApiKeyInput.value = storage.googleApiKey;
+    }
+
+    if (storage.n8nEndpoint) {
+      const n8nEndpointInput = document.getElementById('n8nEndpointInput');
+      if (n8nEndpointInput) n8nEndpointInput.value = storage.n8nEndpoint;
     }
 
     if (storage.aiProvider) {
@@ -460,6 +466,33 @@ function setupSettingsEventListeners() {
         showApiStatus(statusDiv, 'Google AI API key saved successfully', 'success');
       } catch (error) {
         showApiStatus(statusDiv, `Error saving API key: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  // Save optional Notion export webhook
+  const saveN8nEndpointBtn = document.getElementById('saveN8nEndpoint');
+  if (saveN8nEndpointBtn) {
+    saveN8nEndpointBtn.addEventListener('click', async () => {
+      const input = document.getElementById('n8nEndpointInput');
+      const statusDiv = document.getElementById('n8nEndpointStatus');
+      const value = input?.value?.trim() || '';
+
+      if (value && !/^https:\/\//i.test(value)) {
+        showApiStatus(statusDiv, 'The webhook URL must start with https://', 'error');
+        return;
+      }
+
+      try {
+        if (value) {
+          await chrome.storage.local.set({ n8nEndpoint: value });
+          showApiStatus(statusDiv, 'Webhook saved', 'success');
+        } else {
+          await chrome.storage.local.remove('n8nEndpoint');
+          showApiStatus(statusDiv, 'Webhook removed, Notion export is off', 'success');
+        }
+      } catch (error) {
+        showApiStatus(statusDiv, `Error saving webhook: ${error.message}`, 'error');
       }
     });
   }

@@ -20,7 +20,8 @@ A Chrome extension (Manifest V3) that summarizes web pages, YouTube videos and U
 
 - The extension ships with **no API keys**. Keys you enter are stored only in `chrome.storage.local` on your machine.
 - Page text, video transcripts and prompts are sent directly from your browser to the provider you selected (OpenAI or Google). Nothing goes to a server operated by this project.
-- The Notion export is off by default. It posts to the n8n webhook URL you store under `n8nEndpoint` in `chrome.storage.local`.
+- The Notion export is off by default. It posts to the n8n webhook URL you enter in Settings (stored as `n8nEndpoint` in `chrome.storage.local`).
+- The side panel loads icon and font stylesheets from public CDNs (cdnjs), which sees only a normal asset request.
 
 ## Project layout
 
@@ -37,7 +38,7 @@ A Chrome extension (Manifest V3) that summarizes web pages, YouTube videos and U
 
 ## Contributing
 
-Issues and pull requests are welcome. Never commit API keys or webhook URLs.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [roadmap](ROADMAP.md). Run `npm test` before opening a pull request.
 
 ## License
 

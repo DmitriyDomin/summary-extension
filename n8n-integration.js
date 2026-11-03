@@ -20,7 +20,7 @@ class N8NIntegration {
     const endpoint = await this.getN8NEndpoint();
 
     if (!endpoint) {
-      throw new Error('Notion export is optional and not configured. Store your n8n webhook URL under "n8nEndpoint" in chrome.storage.local to enable it.');
+      throw new Error('Notion export is optional and not configured. Add your n8n webhook URL in Settings to enable it.');
     }
 
     try {

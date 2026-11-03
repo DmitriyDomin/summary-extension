@@ -147,6 +147,10 @@ function showTranscriptModal(prompt, platformName = 'Video', platformColor = '#1
         modal.remove();
         window.open('https://chatgpt.com/?model=auto&temporary-chat=true', '_blank');
       }, 500);
+    } catch (err) {
+      textarea.select();
+      alert('Please copy the text manually (Ctrl+C or Cmd+C)');
+    }
   };
   
   modal.appendChild(content);

@@ -488,6 +488,26 @@
                             </div>
                         </div>
 
+                        <!-- Optional Notion export (n8n webhook) -->
+                        <div class="api-section">
+                            <div class="api-header">
+                                <div class="api-icon">
+                                    <i class="fas fa-link"></i>
+                                </div>
+                                <div class="api-info">
+                                    <h4>Notion export webhook (optional)</h4>
+                                    <p>Your own n8n webhook URL, used by the Udemy "add to Notion" button</p>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <input type="url" id="n8nEndpointInput" placeholder="https://your-n8n-host/webhook/..." class="text-input">
+                                <div class="api-actions">
+                                    <button id="saveN8nEndpoint" class="action-button">Save</button>
+                                </div>
+                                <div class="api-status" id="n8nEndpointStatus"></div>
+                            </div>
+                        </div>
+
                         <!-- AI Provider Selection -->
                         <div class="setting-row">
                             <label>Default AI Provider</label>

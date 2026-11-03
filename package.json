@@ -1,9 +1,9 @@
 {
   "name": "summary-extension",
   "version": "1.0.0",
-  "main": "add-select-handlers.js",
+  "main": "background.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/basic.test.js"
   },
   "keywords": ["chrome-extension", "summarizer", "youtube", "udemy"],
   "author": "Dmytro Domin",
