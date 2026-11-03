@@ -7,14 +7,29 @@ class QuizManager {
     this.quizSource = 'video'; // 'video' or 'text'
     this.isQuizActive = false;
     this.currentVideoData = null;
+    this.currentPlatform = null; // 'youtube' or 'udemy'
+    this.eventListenersSetup = false; // FIXED: Flag to prevent duplicate listeners
   }
 
   initialize() {
-    this.setupEventListeners();
-    this.checkCurrentVideo();
+    // Only setup event listeners once
+    if (!this.eventListenersSetup) {
+      this.setupEventListeners();
+      this.eventListenersSetup = true;
+    }
+    console.log('🎯 Initializing Quiz Manager...');
+    // this.checkCurrentVideo();
   }
 
   setupEventListeners() {
+    // Early return if already setup
+    if (this.eventListenersSetup) {
+      console.log('🎯 Event listeners already setup, skipping...');
+      return;
+    }
+
+    console.log('🎯 Setting up quiz event listeners...');
+    
     // Source toggle buttons
     const useVideoBtn = document.getElementById('useVideoBtn');
     const useTextBtn = document.getElementById('useTextBtn');
@@ -45,6 +60,7 @@ class QuizManager {
     }
     
     if (regenerateQuizBtn) {
+      console.log('🎯 Adding event listener for regenerateQuizBtn');
       regenerateQuizBtn.addEventListener('click', () => this.regenerateQuiz());
     }
     
@@ -68,23 +84,66 @@ class QuizManager {
   }
 
   async checkCurrentVideo() {
-    // Check if we're on a YouTube page and get current video data
+    // Check if we're on a YouTube or Udemy page and get current video data
     try {
-      // FIXED: In side panel context, we need to find YouTube tabs across all windows
+      // Get the active tab first to check its URL
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const activeTab = tabs[0];
+      
+      if (!activeTab || !activeTab.url) {
+        console.log('🎯 No active tab found');
+        this.currentVideoData = null;
+        this.currentPlatform = null;
+        this.updateVideoDisplay();
+        return;
+      }
+      
+      // Check for Udemy based on active tab URL
+      if (activeTab.url.includes('udemy.com') && 
+          (activeTab.url.includes('/learn/lecture/') || activeTab.url.includes('/course/'))) {
+        
+        console.log('🎯 Detected Udemy lecture page, getting course data...');
+        this.currentPlatform = 'udemy';
+        
+        // Try to get Udemy data from content script functions
+        try {
+          const udemyData = await this.getUdemyVideoData();
+          if (udemyData) {
+            this.currentVideoData = udemyData;
+            this.updateVideoDisplay();
+            return;
+          }
+        } catch (error) {
+          console.log('🎯 Could not get Udemy data:', error.message);
+        }
+      }
+      
+      // Then check for YouTube (existing logic)
       const windows = await chrome.windows.getAll({ populate: true });
-      let activeTab = null;
+      let youtubeTab = null;
       
       // Look for active YouTube tabs across all windows
       for (const window of windows) {
         const activeTabInWindow = window.tabs.find(tab => tab.active);
         if (activeTabInWindow && activeTabInWindow.url && activeTabInWindow.url.includes('youtube.com/watch')) {
-          activeTab = activeTabInWindow;
-          console.log('🎯 Found active YouTube tab:', activeTab.title);
+          this.currentPlatform = 'youtube';
+          const urlParams = new URLSearchParams(new URL(activeTabInWindow.url).search);
+          const currentVideoId = urlParams.get('v');
+          youtubeTab = activeTabInWindow;
+          const sessionKey = `liveChatSession_${currentVideoId}`;
+          const sessionResult = await chrome.storage.local.get([sessionKey]);
+          const savedSession = sessionResult[sessionKey];
+          if (savedSession?.videoData) {
+            this.currentVideoData = savedSession.videoData;
+            this.updateVideoDisplay();
+            return;
+          }
+          console.log('🎯 Found active YouTube tab:', youtubeTab.title);
           break;
         }
       }
       
-      if (activeTab) {
+      if (youtubeTab) {
         console.log('🎯 Detected YouTube page, getting video data...');
         
         // FIXED: First, try to get video data from the live summary manager if available
@@ -122,7 +181,7 @@ class QuizManager {
           const currentVideoResponse = await new Promise((resolve, reject) => {
             chrome.runtime.sendMessage({ 
               action: 'getCurrentVideoInfo',
-              tabId: activeTab.id  // Pass the specific tab ID
+              tabId: youtubeTab.id  // Pass the specific tab ID
             }, (response) => {
               if (chrome.runtime.lastError) {
                 reject(chrome.runtime.lastError);
@@ -143,7 +202,7 @@ class QuizManager {
         }
         
         // If we reach here, try to extract video ID from URL and fetch data manually
-        const videoIdMatch = activeTab.url.match(/[?&]v=([^&]+)/);
+        const videoIdMatch = youtubeTab.url.match(/[?&]v=([^&]+)/);
         if (videoIdMatch) {
           const videoId = videoIdMatch[1];
           console.log('🎯 Extracted video ID from URL:', videoId);
@@ -154,7 +213,7 @@ class QuizManager {
               chrome.runtime.sendMessage({ 
                 action: 'fetchTranscriptForSidePanel', 
                 videoId: videoId,
-                tabId: activeTab.id  // Pass the specific tab ID
+                tabId: youtubeTab.id  // Pass the specific tab ID
               }, (response) => {
                 if (chrome.runtime.lastError) {
                   reject(chrome.runtime.lastError);
@@ -168,13 +227,13 @@ class QuizManager {
               console.log('🎯 Successfully fetched transcript via background communication');
               
               // Get basic video info from the page
-              const videoTitle = await this.getVideoTitleFromPage(activeTab.id);
+              const videoTitle = await this.getVideoTitleFromPage(youtubeTab.id);
               const videoThumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
               
               this.currentVideoData = {
                 videoId: videoId,
                 title: videoTitle || 'YouTube Video',
-                url: activeTab.url,
+                url: youtubeTab.url,
                 thumbnail: videoThumbnail,
                 transcript: transcriptResponse.transcript,
                 timestampedTranscript: transcriptResponse.timestampedTranscript || []
@@ -190,37 +249,151 @@ class QuizManager {
       }
       
       // If we reach here, no video data was found
-      console.log('🎯 No YouTube video data available');
+      console.log('🎯 No YouTube or Udemy content available');
       this.currentVideoData = null;
+      this.currentPlatform = null;
       this.updateVideoDisplay();
       
     } catch (error) {
       console.error('🎯 Error checking current video:', error);
       this.currentVideoData = null;
+      this.currentPlatform = null;
       this.updateVideoDisplay();
     }
   }
 
-  async getVideoTitleFromPage(tabId) {
+  async getUdemyVideoData() {
     try {
-      const response = await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Timeout')), 5000);
-        
-        chrome.tabs.sendMessage(tabId, { action: 'getVideoTitle' }, (response) => {
-          clearTimeout(timeout);
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(response);
-          }
-        });
-      });
+      // Get active tab to send message to Udemy content script
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const activeTab = tabs[0];
       
-      return response && response.title ? response.title : null;
+      if (!activeTab || !activeTab.url.includes('udemy.com')) {
+        throw new Error('Not on Udemy page');
+      }
+      
+      // Try multiple times with different approaches
+      let udemyResponse = null;
+      
+      // Attempt 1: Direct message to content script
+      try {
+        console.log('🎯 Attempting to get Udemy data from content script...');
+        udemyResponse = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout')), 5000);
+          
+          chrome.tabs.sendMessage(activeTab.id, { 
+            action: 'getUdemyVideoData'
+          }, (response) => {
+            clearTimeout(timeout);
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(response);
+            }
+          });
+        });
+        
+        if (udemyResponse && udemyResponse.courseData) {
+          console.log('🎯 Successfully got Udemy course data:', udemyResponse.courseData);
+          return udemyResponse.courseData;
+        }
+      } catch (error) {
+        console.log('🎯 Content script attempt failed:', error.message);
+      }
+      
+      // Attempt 2: Try through background script
+      try {
+        console.log('🎯 Attempting to get Udemy data through background script...');
+        const backgroundResponse = await new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({ 
+            action: 'getCurrentVideoInfo',
+            tabId: activeTab.id
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(response);
+            }
+          });
+        });
+        
+        if (backgroundResponse && backgroundResponse.videoData) {
+          console.log('🎯 Successfully got Udemy data through background script');
+          return backgroundResponse.videoData;
+        }
+      } catch (error) {
+        console.log('🎯 Background script attempt failed:', error.message);
+      }
+      
+      // Attempt 3: Extract basic info from URL as fallback
+      console.log('🎯 All communication attempts failed, extracting basic info from URL...');
+      const courseTitle = this.extractCourseTitleFromUrl(activeTab.url);
+      const lessonTitle = this.extractLessonTitleFromUrl(activeTab.url) || 'Udemy Lecture';
+      
+      return {
+        courseId: this.extractCourseIdFromUrl(activeTab.url),
+        title: `${courseTitle} - ${lessonTitle}`,
+        courseTitle: courseTitle,
+        lessonTitle: lessonTitle,
+        url: activeTab.url,
+        thumbnail: this.getUdemyThumbnail(activeTab.url),
+        transcript: null, // Will be fetched when generating quiz
+        platform: 'udemy'
+      };
+      
     } catch (error) {
-      console.log('Could not get video title from page:', error.message);
-      return null;
+      console.error('🎯 Error getting Udemy data:', error);
+      throw error;
     }
+  }
+
+  extractLessonTitleFromUrl(url) {
+    try {
+      // Extract lesson title from Udemy URL pattern like /learn/lecture/12345/some-lesson-title
+      const match = url.match(/\/learn\/lecture\/\d+\/([^\/\?]+)/);
+      if (match) {
+        return match[1].split('-').map(word => 
+          word.charAt(0).toUpperCase() + word.slice(1)
+        ).join(' ');
+      }
+    } catch (error) {
+      console.error('Error extracting lesson title:', error);
+    }
+    return null;
+  }
+
+  extractCourseTitleFromUrl(url) {
+    try {
+      // Extract course title from Udemy URL pattern
+      const urlParts = url.split('/');
+      const courseIndex = urlParts.findIndex(part => part === 'course');
+      if (courseIndex !== -1 && courseIndex + 1 < urlParts.length) {
+        const courseSlug = urlParts[courseIndex + 1];
+        // Convert slug to readable title
+        return courseSlug.split('-').map(word => 
+          word.charAt(0).toUpperCase() + word.slice(1)
+        ).join(' ');
+      }
+    } catch (error) {
+      console.error('Error extracting course title:', error);
+    }
+    return 'Udemy Course';
+  }
+
+  extractCourseIdFromUrl(url) {
+    try {
+      // Extract course ID from Udemy URL if available
+      const match = url.match(/\/course\/([^\/]+)/);
+      return match ? match[1] : 'unknown';
+    } catch (error) {
+      console.error('Error extracting course ID:', error);
+      return 'unknown';
+    }
+  }
+
+  getUdemyThumbnail(url) {
+    // Generate a generic Udemy thumbnail or try to extract from course
+    return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQwIiBoZWlnaHQ9IjEzNSIgdmlld0JveD0iMCAwIDI0MCAxMzUiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjI0MCIgaGVpZ2h0PSIxMzUiIGZpbGw9IiNBNDM1RjAiLz4KPHRleHQgeD0iMTIwIiB5PSI3MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE4IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlV0ZW15IENvdXJzZTwvdGV4dD4KPC9zdmc+';
   }
 
   updateVideoDisplay() {
@@ -230,7 +403,14 @@ class QuizManager {
     
     if (this.currentVideoData && quizVideoInfo && quizVideoThumbnail && quizVideoTitle) {
       quizVideoThumbnail.src = this.currentVideoData.thumbnail || '';
-      quizVideoTitle.textContent = this.currentVideoData.title || 'Current YouTube Video';
+      
+      // Display title based on platform
+      if (this.currentPlatform === 'udemy') {
+        quizVideoTitle.textContent = this.currentVideoData.title || 'Current Udemy Course';
+      } else {
+        quizVideoTitle.textContent = this.currentVideoData.title || 'Current YouTube Video';
+      }
+      
       quizVideoInfo.style.display = 'block';
       console.log('🎯 Video display updated with data:', this.currentVideoData.title);
     } else {
@@ -284,9 +464,12 @@ class QuizManager {
     let isValid = false;
     
     if (this.quizSource === 'video') {
-      // For video source, we just need to confirm we have a video available
-      // The transcript will be fetched when generating the quiz
-      isValid = this.currentVideoData && this.currentVideoData.videoId;
+      // For video source, check if we have video data and platform info
+      if (this.currentPlatform === 'youtube') {
+        isValid = this.currentVideoData && this.currentVideoData.videoId;
+      } else if (this.currentPlatform === 'udemy') {
+        isValid = this.currentVideoData && this.currentVideoData.courseId;
+      }
     } else {
       isValid = quizCustomText && quizCustomText.value.trim().length > 100;
     }
@@ -295,8 +478,10 @@ class QuizManager {
       generateQuizBtn.disabled = !isValid;
       console.log('🎯 Quiz validation:', {
         source: this.quizSource,
+        platform: this.currentPlatform,
         hasVideoData: !!this.currentVideoData,
         videoId: this.currentVideoData?.videoId,
+        courseId: this.currentVideoData?.courseId,
         textLength: quizCustomText?.value?.trim()?.length || 0,
         isValid
       });
@@ -317,54 +502,164 @@ class QuizManager {
       let sourceId = '';
       
       if (this.quizSource === 'video' && this.currentVideoData) {
-        sourceId = this.currentVideoData.videoId || 'unknown';
-        
-        // Check if we already have transcript
-        if (this.currentVideoData.transcript && this.currentVideoData.transcript.length > 100) {
-          sourceText = this.currentVideoData.transcript;
-          console.log('🎯 Using existing transcript from video data');
-        } else {
-          // Need to fetch transcript
-          console.log('🎯 Fetching transcript for quiz generation...');
+        if (this.currentPlatform === 'youtube') {
+          sourceId = this.currentVideoData.videoId || 'unknown';
           
-          if (generateQuizBtn) {
-            generateQuizBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching transcript...';
-          }
-          
-          try {
-            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            const activeTab = tabs[0];
+          // Check if we already have transcript
+          if (this.currentVideoData.transcript && this.currentVideoData.transcript.length > 100) {
+            sourceText = this.currentVideoData.transcript;
+            console.log('🎯 Using existing YouTube transcript from video data');
+          } else {
+            // Need to fetch YouTube transcript
+            console.log('🎯 Fetching YouTube transcript for quiz generation...');
             
-            const transcriptResponse = await new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => reject(new Error('Timeout fetching transcript')), 15000);
-              
-              chrome.tabs.sendMessage(activeTab.id, { 
-                action: 'fetchTranscript', 
-                videoId: this.currentVideoData.videoId 
-              }, (response) => {
-                clearTimeout(timeout);
-                if (chrome.runtime.lastError) {
-                  reject(new Error(chrome.runtime.lastError.message));
-                } else {
-                  resolve(response);
-                }
-              });
-            });
-            
-            if (transcriptResponse && transcriptResponse.transcript) {
-              sourceText = transcriptResponse.transcript;
-              // Update the current video data with the transcript
-              this.currentVideoData.transcript = transcriptResponse.transcript;
-              if (transcriptResponse.timestampedTranscript) {
-                this.currentVideoData.timestampedTranscript = transcriptResponse.timestampedTranscript;
-              }
-              console.log('🎯 Successfully fetched transcript for quiz generation');
-            } else {
-              throw new Error('No transcript available for this video');
+            if (generateQuizBtn) {
+              generateQuizBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching transcript...';
             }
-          } catch (transcriptError) {
-            console.error('🎯 Error fetching transcript:', transcriptError);
-            throw new Error('Could not fetch video transcript: ' + transcriptError.message);
+            
+            try {
+              const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+              const activeTab = tabs[0];
+              
+              const transcriptResponse = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Timeout fetching transcript')), 15000);
+                
+                chrome.tabs.sendMessage(activeTab.id, { 
+                  action: 'fetchTranscript', 
+                  videoId: this.currentVideoData.videoId 
+                }, (response) => {
+                  clearTimeout(timeout);
+                  if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                  } else {
+                    resolve(response);
+                  }
+                });
+              });
+              
+              if (transcriptResponse && transcriptResponse.transcript) {
+                sourceText = transcriptResponse.transcript;
+                // Update the current video data with the transcript
+                this.currentVideoData.transcript = transcriptResponse.transcript;
+                if (transcriptResponse.timestampedTranscript) {
+                  this.currentVideoData.timestampedTranscript = transcriptResponse.timestampedTranscript;
+                }
+                console.log('🎯 Successfully fetched YouTube transcript for quiz generation');
+              } else {
+                throw new Error('No transcript available for this video');
+              }
+            } catch (transcriptError) {
+              console.error('🎯 Error fetching YouTube transcript:', transcriptError);
+              throw new Error('Could not fetch video transcript: ' + transcriptError.message);
+            }
+          }
+        } else if (this.currentPlatform === 'udemy') {
+          sourceId = this.currentVideoData.courseId || 'unknown';
+          
+          // Check if we already have Udemy transcript
+          if (this.currentVideoData.transcript && this.currentVideoData.transcript.length > 100) {
+            sourceText = this.currentVideoData.transcript;
+            console.log('🎯 Using existing Udemy transcript from course data');
+          } else {
+            // Need to fetch Udemy transcript - try multiple approaches
+            console.log('🎯 Fetching Udemy transcript for quiz generation...');
+            
+            if (generateQuizBtn) {
+              generateQuizBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching course content...';
+            }
+            
+            let transcriptText = null;
+            
+            // Attempt 1: Try content script
+            try {
+              const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+              const activeTab = tabs[0];
+              
+              const transcriptResponse = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Timeout fetching Udemy content')), 10000);
+                
+                chrome.tabs.sendMessage(activeTab.id, { 
+                  action: 'fetchUdemyTranscript'
+                }, (response) => {
+                  clearTimeout(timeout);
+                  if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                  } else {
+                    resolve(response);
+                  }
+                });
+              });
+              
+              if (transcriptResponse && transcriptResponse.transcript && transcriptResponse.transcript.length > 100) {
+                transcriptText = transcriptResponse.transcript;
+                console.log('🎯 Successfully fetched Udemy transcript via content script');
+              }
+            } catch (transcriptError) {
+              console.log('🎯 Content script transcript fetch failed:', transcriptError.message);
+            }
+            
+            // Attempt 2: Try background script approach
+            if (!transcriptText) {
+              try {
+                console.log('🎯 Trying background script for Udemy transcript...');
+                const backgroundResponse = await new Promise((resolve, reject) => {
+                  chrome.runtime.sendMessage({ 
+                    action: 'fetchUdemyTranscriptForQuiz',
+                    tabId: activeTab.id
+                  }, (response) => {
+                    if (chrome.runtime.lastError) {
+                      reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                      resolve(response);
+                    }
+                  });
+                });
+                
+                if (backgroundResponse && backgroundResponse.transcript && backgroundResponse.transcript.length > 100) {
+                  transcriptText = backgroundResponse.transcript;
+                  console.log('🎯 Successfully fetched Udemy transcript via background script');
+                }
+              } catch (backgroundError) {
+                console.log('🎯 Background script transcript fetch failed:', backgroundError.message);
+              }
+            }
+            
+            // Attempt 3: Generate quiz from course metadata if no transcript available
+            if (!transcriptText) {
+              console.log('🎯 No transcript available, generating quiz from course metadata...');
+              
+              // Create basic content from course information
+              const fallbackContent = `
+Course: ${this.currentVideoData.courseTitle || 'Udemy Course'}
+Lesson: ${this.currentVideoData.lessonTitle || 'Current Lesson'}
+Platform: Udemy Online Learning
+
+This is a Udemy course covering various topics in ${this.currentVideoData.courseTitle || 'the subject area'}. 
+The current lesson "${this.currentVideoData.lessonTitle || 'lesson'}" is part of the comprehensive curriculum.
+
+Key learning objectives typically include:
+- Understanding fundamental concepts in the subject area
+- Practical application of learned skills
+- Building knowledge through structured content
+- Developing proficiency through guided instruction
+
+Students will learn through video content, practical exercises, and interactive materials designed to enhance understanding of the topic.
+              `.trim();
+              
+              if (fallbackContent.length > 100) {
+                transcriptText = fallbackContent;
+                console.log('🎯 Using fallback content for Udemy quiz generation');
+              }
+            }
+            
+            if (transcriptText) {
+              sourceText = transcriptText;
+              // Update the current video data with the transcript
+              this.currentVideoData.transcript = transcriptText;
+              console.log('🎯 Successfully prepared Udemy content for quiz generation');
+            } else {
+              throw new Error('No course content available for this Udemy lecture. Please try a different lecture or check if the page has finished loading.');
+            }
           }
         }
       } else {
@@ -391,6 +686,7 @@ class QuizManager {
         id: sourceId,
         questions: quiz.questions,
         source: this.quizSource,
+        platform: this.currentPlatform,
         sourceText: sourceText.substring(0, 200) + '...',
         generatedAt: new Date().toISOString()
       };
@@ -446,7 +742,7 @@ Rules:
       // Get API response using the same service as other components
       const response = await apiService.getGeminiResponse(
         '', // API key will be retrieved internally
-        'gemini-2.0-flash-001',
+        'gemini-3.5-flash',
         'You are a quiz generator that creates multiple choice questions based on provided content. Always respond with valid JSON in the exact format requested.',
         prompt,
         0.7
@@ -619,7 +915,7 @@ Rules:
         if (isCorrect) {
           option.classList.add('correct');
           indicator.innerHTML = '<i class="fas fa-check"></i>';
-        } else if (isSelected) {
+        } else if (isSelected && !userAnswer.isCorrect) {
           option.classList.add('incorrect');
           indicator.innerHTML = '<i class="fas fa-times"></i>';
         }
@@ -686,17 +982,96 @@ Rules:
   retakeQuiz() {
     if (!this.currentQuiz) return;
     
+    console.log('🎯 Retaking quiz - resetting state and UI');
+    
     // Reset quiz state
     this.userAnswers = [];
     this.isQuizActive = true;
     
-    // Show quiz display again
-    this.displayQuiz();
+    // Clear any existing answer styling and re-enable inputs
+    const questions = document.querySelectorAll('.quiz-question');
+    questions.forEach((questionDiv) => {
+      const answerOptions = questionDiv.querySelectorAll('.answer-option');
+      answerOptions.forEach((option) => {
+        // Remove visual state classes
+        option.classList.remove('correct', 'incorrect');
+        
+        // Clear answer indicators
+        const indicator = option.querySelector('.answer-indicator');
+        if (indicator) {
+          indicator.innerHTML = '';
+        }
+        
+        // Re-enable and uncheck radio inputs
+        const input = option.querySelector('input');
+        if (input) {
+          input.disabled = false;
+          input.checked = false;
+        }
+      });
+    });
+    
+    // Show quiz display section and hide results
+    const quizDisplaySection = document.getElementById('quizDisplaySection');
+    const quizResultsSection = document.getElementById('quizResultsSection');
+    
+    if (quizDisplaySection) quizDisplaySection.style.display = 'block';
+    if (quizResultsSection) quizResultsSection.style.display = 'none';
+    
+    // Reset the header to original state
+    const quizDisplayHeader = quizDisplaySection?.querySelector('.card-header h3');
+    if (quizDisplayHeader) {
+      quizDisplayHeader.innerHTML = `
+        <i class="fas fa-clipboard-list"></i>
+        Quiz Questions
+      `;
+    }
+    
+    // FIXED: Restore the original action buttons for active quiz state
+    const quizActions = quizDisplaySection?.querySelector('.quiz-actions');
+    if (quizActions) {
+      quizActions.innerHTML = `
+        <button id="checkAnswersBtn" class="primary-button" style="display: none;">
+          <i class="fas fa-check"></i>
+          Check Answers
+        </button>
+        <button id="regenerateQuizBtn" class="action-button secondary">
+          <i class="fas fa-sync-alt"></i>
+          Regenerate Quiz
+        </button>
+      `;
+      
+      // Re-add event listeners for the restored buttons
+      const checkAnswersBtn = document.getElementById('checkAnswersBtn');
+      const regenerateQuizBtn = document.getElementById('regenerateQuizBtn');
+      
+      if (checkAnswersBtn) {
+        checkAnswersBtn.addEventListener('click', () => this.checkAnswers());
+      }
+      
+      if (regenerateQuizBtn) {
+        regenerateQuizBtn.addEventListener('click', () => this.regenerateQuiz());
+      }
+    }
+    
+    // Update progress display
+    this.updateProgress();
+    
+    // Re-setup answer listeners for the fresh quiz
+    this.setupAnswerListeners();
+    
+    // Scroll to top
+    const quizContainer = document.getElementById('quizContainer');
+    if (quizContainer) {
+      quizContainer.scrollTop = 0;
+    }
+    
+    console.log('🎯 Quiz retake setup complete');
   }
 
   regenerateQuiz() {
     // Generate a new quiz with the same source
-    this.generateQuiz();
+    this.startNewQuiz();
   }
 
   startNewQuiz() {
@@ -750,6 +1125,7 @@ Rules:
 
   // Method to be called when switching to quiz tab
   onTabActivated() {
+    console.log('🎯 onTabActivated');
     this.checkCurrentVideo();
     this.validateInput();
   }
@@ -854,32 +1230,40 @@ Rules:
 
 // Global instance
 let quizManager = null;
+let isQuizManagerInitialized = false;
 
 // Initialize when DOM is loaded or immediately if already loaded
 function initializeQuizManager() {
-  if (!quizManager) {
-    console.log('🎯 Initializing Quiz Manager...');
-    quizManager = new QuizManager();
-    quizManager.initialize();
+  if (isQuizManagerInitialized || quizManager) {
+    console.log('🎯 Quiz Manager already initialized, skipping...');
+    return quizManager;
   }
+  
+  console.log('🎯 Initializing Quiz Manager...');
+  quizManager = new QuizManager();
+  quizManager.initialize();
+  isQuizManagerInitialized = true;
+  return quizManager;
 }
 
-// Check if DOM is already loaded
-if (document.readyState === 'loading') {
-  // DOM is still loading, wait for DOMContentLoaded
-  document.addEventListener('DOMContentLoaded', initializeQuizManager);
-} else {
-  // DOM is already loaded, initialize immediately
-  initializeQuizManager();
-}
+// // Check if DOM is already loaded
+// if (document.readyState === 'loading') {
+//   // DOM is still loading, wait for DOMContentLoaded
+//   document.addEventListener('DOMContentLoaded', initializeQuizManager, { once: true });
+// } else {
+//   // DOM is already loaded, initialize immediately
+//   initializeQuizManager();
+// }
 
-// Also listen for the popupLoaded event as a fallback
-document.addEventListener('popupLoaded', () => {
-  console.log('🎯 Popup loaded event received, ensuring quiz manager is initialized...');
-  initializeQuizManager();
-});
+// // Also listen for the popupLoaded event as a fallback
+// document.addEventListener('popupLoaded', () => {
+//   console.log('🎯 Popup loaded event received, ensuring quiz manager is initialized...');
+//   initializeQuizManager();
+// }, { once: true });
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = QuizManager;
-}
+// // Export for use in other modules
+// if (typeof module !== 'undefined' && module.exports) {
+//   module.exports = QuizManager;
+// }
+
+window.QuizManager = QuizManager;

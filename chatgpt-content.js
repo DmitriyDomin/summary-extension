@@ -10,7 +10,7 @@ function isChatGPTPage() {
 function waitForChatGPTLoad() {
   return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 60; // 30 seconds max wait
+    const maxAttempts = 20; // 10 seconds max wait
     
     const checkForTextarea = () => {
       attempts++;
@@ -38,7 +38,7 @@ function waitForChatGPTLoad() {
       }
       
       if (attempts < maxAttempts) {
-        setTimeout(checkForTextarea, 500);
+        setTimeout(checkForTextarea, 200);
       } else {
         console.warn('Could not find ChatGPT input element after maximum attempts');
         resolve(null);
@@ -49,13 +49,27 @@ function waitForChatGPTLoad() {
   });
 }
 
+// Global flag to prevent multiple simultaneous attempts
+let isProcessingPrompt = false;
+
 // Improved auto-paste and send function
 async function autoPasteAndSend() {
   try {
+    // Prevent multiple simultaneous attempts
+    if (isProcessingPrompt) {
+      console.log('Already processing a prompt, skipping...');
+      return;
+    }
+    
     console.log('Checking for pending ChatGPT prompt...');
     
-    // Get the pending prompt from storage
-    const result = await chrome.storage.local.get(['pendingChatGptPrompt', 'promptTimestamp']);
+    // Get the pending prompt from storage; retry briefly in case the write is still in-flight
+    let result = await chrome.storage.local.get(['pendingChatGptPrompt', 'promptTimestamp']);
+    if (!result.pendingChatGptPrompt) {
+      // Wait a bit more and retry once
+      await new Promise(r => setTimeout(r, 800));
+      result = await chrome.storage.local.get(['pendingChatGptPrompt', 'promptTimestamp']);
+    }
     
     if (!result.pendingChatGptPrompt) {
       console.log('No pending prompt found');
@@ -64,13 +78,17 @@ async function autoPasteAndSend() {
     
     console.log('Found pending prompt, checking timestamp...');
     
-    // Check if prompt is recent (within 5 minutes - increased from 2)
+    // Check if prompt is recent (within 5 minutes)
     const now = Date.now();
     if (now - result.promptTimestamp > 300000) {
       console.log('Prompt too old, clearing...');
       chrome.storage.local.remove(['pendingChatGptPrompt', 'promptTimestamp']);
       return;
     }
+    
+    // Set processing flag and clear the prompt immediately to prevent re-processing
+    isProcessingPrompt = true;
+    chrome.storage.local.remove(['pendingChatGptPrompt', 'promptTimestamp']);
     
     console.log('Waiting for ChatGPT interface to load...');
     
@@ -79,6 +97,7 @@ async function autoPasteAndSend() {
     
     if (!inputElement) {
       console.error('Could not find ChatGPT input element');
+      isProcessingPrompt = false; // Reset flag on failure
       showManualPasteNotification(result.pendingChatGptPrompt);
       return;
     }
@@ -88,88 +107,78 @@ async function autoPasteAndSend() {
     // Show notification that we're about to auto-paste
     showAutopasteNotification();
     
-    // Wait a bit for user to see the notification and ChatGPT to be ready
-    setTimeout(async () => {
-      try {
-        console.log('Setting prompt text...');
-        
-        // Handle both textarea and contenteditable elements
-        if (inputElement.tagName === 'TEXTAREA') {
-          // Standard textarea
-          inputElement.value = result.pendingChatGptPrompt;
-          inputElement.focus();
-          
-          // Trigger events
-          inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-          inputElement.dispatchEvent(new Event('change', { bubbles: true }));
-          inputElement.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-          inputElement.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-        } else {
-          // Contenteditable div
-          inputElement.focus();
-          inputElement.textContent = result.pendingChatGptPrompt;
-          
-          // Trigger events for contenteditable
-          inputElement.dispatchEvent(new Event('input', { bubbles: true }));
-          inputElement.dispatchEvent(new Event('paste', { bubbles: true }));
-          inputElement.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+    // Start pasting immediately, no need to wait
+    try {
+      console.log('Setting prompt text...');
+      
+      // Handle both textarea and contenteditable elements
+      if (inputElement.tagName === 'TEXTAREA') {
+        inputElement.focus();
+        inputElement.value = result.pendingChatGptPrompt;
+        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+        inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        // Contenteditable div (React/ProseMirror) — use paste event so React sees the text
+        inputElement.focus();
+        const dt = new DataTransfer();
+        dt.setData('text/plain', result.pendingChatGptPrompt);
+        const pasted = inputElement.dispatchEvent(
+          new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+        );
+        // Fallback: execCommand if paste event was not consumed
+        if (!pasted || inputElement.textContent.trim().length === 0) {
+          document.execCommand('selectAll', false, null);
+          document.execCommand('insertText', false, result.pendingChatGptPrompt);
         }
-        
-        console.log('Text set, waiting before sending...');
-        
-        // Wait longer for ChatGPT to process the input
-        setTimeout(() => {
-          console.log('Looking for send button...');
-          
-          // Multiple possible send button selectors
-          const sendSelectors = [
-            'button[data-testid="send-button"]',
-            'button[aria-label*="Send"]',
-            'button[aria-label*="send"]',
-            'button:has(svg path[d*="M7 11"])',
-            'button:has(svg path[d*="m12 3"])',
-            'button[type="submit"]',
-            'button:has(svg):not([disabled])',
-            'button svg[data-testid="send-button"]',
-            'button[class*="send"]'
-          ];
-          
-          let sendButton = null;
-          for (const selector of sendSelectors) {
-            try {
-              sendButton = document.querySelector(selector);
-              if (sendButton && !sendButton.disabled && sendButton.offsetParent !== null) {
-                console.log('Found send button with selector:', selector);
-                break;
-              }
-            } catch (e) {
-              // Some selectors might fail, continue
-            }
-          }
-          
-          if (sendButton && !sendButton.disabled) {
-            console.log('Clicking send button...');
-            sendButton.click();
-            
-            // Show success notification
-            showSuccessNotification();
-            
-            // Clear the prompt from storage
-            chrome.storage.local.remove(['pendingChatGptPrompt', 'promptTimestamp']);
-          } else {
-            console.log('Send button not found or disabled, showing manual instruction');
-            showManualSendNotification();
-          }
-        }, 2000); // Increased wait time
-        
-      } catch (error) {
-        console.error('Error auto-sending:', error);
-        showManualSendNotification();
       }
-    }, 3000); // Increased initial wait time
+      
+      console.log('Text set, looking for send button...');
+      
+      // Poll for the send button to become enabled (React may take a moment)
+      let pollAttempts = 0;
+      const maxPollAttempts = 20; // up to 4 seconds
+      const pollInterval = setInterval(() => {
+        pollAttempts++;
+        const sendSelectors = [
+          'button[data-testid="send-button"]',
+          'button[aria-label*="Send message"]',
+          'button[aria-label*="Send"]',
+          'button[aria-label*="send"]',
+          'button[type="submit"]'
+        ];
+        let sendButton = null;
+        for (const selector of sendSelectors) {
+          try {
+            const btn = document.querySelector(selector);
+            if (btn && !btn.disabled && btn.offsetParent !== null) {
+              sendButton = btn;
+              break;
+            }
+          } catch (e) { /* continue */ }
+        }
+        if (sendButton) {
+          clearInterval(pollInterval);
+          console.log('Send button ready, clicking...');
+          sendButton.click();
+          showSuccessNotification();
+          isProcessingPrompt = false;
+        } else if (pollAttempts >= maxPollAttempts) {
+          clearInterval(pollInterval);
+          console.log('Send button not found after polling, showing manual instruction');
+          isProcessingPrompt = false;
+          showManualSendNotification();
+        }
+      }, 200);
+      
+    } catch (error) {
+      console.error('Error auto-sending:', error);
+      isProcessingPrompt = false; // Reset flag on error
+      showManualSendNotification();
+    }
     
   } catch (error) {
     console.error('Error in auto-paste:', error);
+    isProcessingPrompt = false; // Reset flag on error
     showManualPasteNotification();
   }
 }
@@ -246,11 +255,11 @@ function showAutopasteNotification() {
   addNotificationStyles();
   document.body.appendChild(notification);
   
-  // Remove after 3 seconds
+  // Remove after 2 seconds (shorter)
   setTimeout(() => {
     notification.style.animation = 'slideOutBounce 0.4s ease-in';
     setTimeout(() => notification.remove(), 400);
-  }, 3000);
+  }, 2000);
 }
 
 // Show success notification
@@ -368,34 +377,10 @@ async function initChatGPTIntegration() {
   
   console.log('ChatGPT page detected, initializing integration...');
   
-  // Wait a bit for page to settle
+  // Wait for the React app to fully render before attempting paste
   setTimeout(async () => {
     await autoPasteAndSend();
-  }, 2000);
-  
-  // Also listen for storage changes with debouncing
-  let storageChangeTimeout;
-  chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'local' && changes.pendingChatGptPrompt && changes.pendingChatGptPrompt.newValue) {
-      console.log('New pending prompt detected via storage change');
-      
-      // Debounce multiple rapid changes
-      clearTimeout(storageChangeTimeout);
-      storageChangeTimeout = setTimeout(autoPasteAndSend, 1500);
-    }
-  });
-  
-  // Listen for URL changes (ChatGPT is SPA)
-  let currentUrl = location.href;
-  const observer = new MutationObserver(() => {
-    if (location.href !== currentUrl) {
-      currentUrl = location.href;
-      console.log('ChatGPT navigation detected, re-checking for prompts...');
-      setTimeout(autoPasteAndSend, 3000);
-    }
-  });
-  
-  observer.observe(document.body, { childList: true, subtree: true });
+  }, 1500);
 }
 
 // Start integration when page loads
@@ -404,11 +389,6 @@ if (document.readyState === 'loading') {
 } else {
   initChatGPTIntegration();
 }
-
-// Also try again when window loads
-window.addEventListener('load', () => {
-  setTimeout(initChatGPTIntegration, 1000);
-});
 
 // Add click event listener for copy buttons (delegated)
 document.addEventListener('click', (event) => {

@@ -586,6 +586,61 @@ async function loadCurrentSummaryTopic() {
   }
 }
 
+// Global deduplication tracking
+let isInitializingLiveChat = false;
+let lastInitializedVideoId = null;
+
+// Shared function to initialize Live Chat Manager with deduplication
+async function initializeLiveChatWithVideoData(videoData, source = 'unknown') {
+  console.log(`🎬 initializeLiveChatWithVideoData called from ${source} with video:`, videoData?.title);
+  
+  // Prevent duplicate initialization
+  if (isInitializingLiveChat) {
+    console.log('🎬 LiveChat initialization already in progress, skipping duplicate call from', source);
+    return;
+  }
+  
+  // Check if we're already initialized with the same video
+  if (lastInitializedVideoId === videoData?.videoId) {
+    console.log('🎬 LiveChat already initialized with this video ID:', videoData.videoId, 'skipping duplicate from', source);
+    return;
+  }
+  
+  isInitializingLiveChat = true;
+  
+  try {
+    // Force switch to Live Summary tab
+    await forceSwitchToLiveTab(videoData);
+    
+    // Initialize Live Chat Manager
+    if (liveChatManager && liveChatManager.initializeWithCurrentVideo) {
+      console.log('🎬 Using existing liveChatManager instance');
+      await liveChatManager.initializeWithCurrentVideo(videoData);
+    } else {
+      // Create manager if it doesn't exist
+      if (window.LiveChatManager) {
+        console.log('🎬 Creating new LiveChatManager instance');
+        liveChatManager = new window.LiveChatManager();
+        await liveChatManager.initializeWithCurrentVideo(videoData);
+      } else {
+        console.log('🎬 LiveChatManager class not available yet, will be handled by page switch');
+      }
+    }
+    
+    // Track the initialized video to prevent duplicates
+    lastInitializedVideoId = videoData?.videoId;
+    console.log('🎬 Successfully initialized LiveChat with video:', videoData?.title);
+    
+  } catch (error) {
+    console.error('🎬 Error initializing LiveChat:', error);
+  } finally {
+    // Reset flag after a short delay to allow for completion
+    setTimeout(() => {
+      isInitializingLiveChat = false;
+    }, 1000);
+  }
+}
+
 // Handle auto-opening live tab if video data is waiting
 async function handleAutoOpenLiveTab() {
   console.log('🔍 handleAutoOpenLiveTab() starting...');
@@ -606,27 +661,7 @@ async function handleAutoOpenLiveTab() {
     
     if (response && response.shouldOpenLiveTab && response.videoData) {
       console.log('🔍 Auto-switching to Live Summary tab with video data:', response.videoData.title);
-      
-      // Force switch to Live Summary tab immediately with video data
-      await forceSwitchToLiveTab(response.videoData);
-      
-      // Initialize Live Chat Manager with video data
-      setTimeout(async () => {
-        console.log('🔍 Initializing Live Chat Manager with video data...');
-        if (liveChatManager && liveChatManager.initializeWithCurrentVideo) {
-          // FIXED: Pass the video data directly to preserve existing saved state
-          await liveChatManager.initializeWithCurrentVideo(response.videoData);
-        } else {
-          // Fallback: create manager if it doesn't exist
-          if (window.LiveChatManager) {
-            liveChatManager = new window.LiveChatManager();
-            // FIXED: Pass the video data directly to preserve existing saved state
-            await liveChatManager.initializeWithCurrentVideo(response.videoData);
-          } else {
-            console.log('🔍 LiveChatManager class not available yet, will be handled by page switch');
-          }
-        }
-      }, 500);
+      await initializeLiveChatWithVideoData(response.videoData, 'handleAutoOpenLiveTab');
     } else {
       console.log('🔍 No auto-open required:');
       console.log('  - shouldOpenLiveTab:', response?.shouldOpenLiveTab);
@@ -753,24 +788,8 @@ function setupRuntimeMessageListener() {
     } else if (request.action === "openLiveSummary" && request.videoData) {
       console.log('📺 Opening Live Summary with video data from runtime message:', request.videoData.title);
       
-      // Force switch to Live Summary tab immediately
-      await forceSwitchToLiveTab();
-      
-      // Initialize with video data
-      setTimeout(async () => {
-        console.log('📺 Initializing with video data from runtime message...');
-        if (liveChatManager && liveChatManager.initializeWithCurrentVideo) {
-          await liveChatManager.initializeWithCurrentVideo(request.videoData);
-        } else {
-          // Fallback: create manager if it doesn't exist
-          if (window.LiveChatManager) {
-            liveChatManager = new window.LiveChatManager();
-            await liveChatManager.initializeWithCurrentVideo(request.videoData);
-          } else {
-            console.log('📺 LiveChatManager class not available yet, will be handled by page switch');
-          }
-        }
-      }, 500);
+      // Use the shared initialization function to prevent duplicates
+      await initializeLiveChatWithVideoData(request.videoData, 'runtimeMessageListener');
     }
     
     sendResponse({ success: true });
@@ -784,22 +803,22 @@ window.handlePageSwitch = async function(targetPageId, videoId = null) {
   try {
     if (targetPageId === 'liveSummaryPage') {
       // Check if LiveChatManager already exists and is initialized
-      if (liveChatManager && liveChatManager.isInitialized && liveChatManager.currentVideoId) {
-        console.log('🎬 LiveChatManager already initialized with video:', liveChatManager.currentVideoId);
+      // if (liveChatManager && liveChatManager.isInitialized && liveChatManager.currentVideoId) {
+      //   console.log('🎬 LiveChatManager already initialized with video:', liveChatManager.currentVideoId);
         
-        // Compare video IDs - only skip re-initialization if they match
-        if (videoId && liveChatManager.currentVideoId !== videoId) {
-          console.log('🎬 Different video requested, re-initializing with new video:', videoId);
-          // Don't return early - proceed to reinitialize with new video
-        } else if (!videoId || liveChatManager.currentVideoId === videoId) {
-          console.log('🎬 Same video or no specific video requested - preserving state');
-          // Just ensure the UI is updated, don't re-initialize
-          if (liveChatManager.youtubeLiveSummary && liveChatManager.youtubeLiveSummary.currentVideoData) {
-            liveChatManager.updateVideoInfo(liveChatManager.youtubeLiveSummary.currentVideoData);
-          }
-          return; // Don't re-initialize
-        }
-      }
+      //   // Compare video IDs - only skip re-initialization if they match
+      //   if (videoId && liveChatManager.currentVideoId !== videoId) {
+      //     console.log('🎬 Different video requested, re-initializing with new video:', videoId);
+      //     // Don't return early - proceed to reinitialize with new video
+      //   } else if (!videoId || liveChatManager.currentVideoId === videoId) {
+      //     console.log('🎬 Same video or no specific video requested - preserving state');
+      //     // Just ensure the UI is updated, don't re-initialize
+      //     if (liveChatManager.youtubeLiveSummary && liveChatManager.youtubeLiveSummary.currentVideoData) {
+      //       liveChatManager.updateVideoInfo(liveChatManager.youtubeLiveSummary.currentVideoData);
+      //     }
+      //     return; // Don't re-initializex
+      //   }
+      // }
       
       if (!liveChatManager) {
         if (window.LiveChatManager) {
@@ -828,6 +847,21 @@ window.handlePageSwitch = async function(targetPageId, videoId = null) {
       }
       if (settingsManager && settingsManager.initialize) {
         settingsManager.initialize();
+      }
+    } else if (targetPageId === 'quizPage') {
+      // Use the existing global quizManager instance instead of creating a new one
+      if (window.quizManager) {
+        console.log('🎯 Using existing global quizManager instance');
+        // Just call onTabActivated to refresh state
+        // if (window.quizManager.onTabActivated) {
+        //   window.quizManager.onTabActivated();
+        // }
+      } else if (window.QuizManager) {
+        console.log('🎯 Creating new QuizManager instance (first time only)');
+        window.quizManager = new window.QuizManager();
+        if (window.quizManager.initialize) {
+          await window.quizManager.initialize();
+        }
       }
     }
   } catch (error) {

@@ -43,7 +43,7 @@ async function makeApiRequest(prompt) {
   if (true) {
     return await apiService.getGeminiResponse(
       apiKey, 
-      'gemini-2.0-flash-001', 
+      'gemini-3.5-flash', 
       "You are a helpful AI assistant that analyzes YouTube video content and provides detailed, accurate responses based on video transcripts.", 
       prompt, 
       0.3
@@ -170,6 +170,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     });
     return true; // Keep channel open for async response
+  } else if (request.action === 'clearVideoCache') {
+    // Allow popup/background to clear the session cache and optionally regenerate
+    handleRegenerateSummary().then(() => sendResponse({ success: true })).catch(err => {
+      console.warn('clearVideoCache error:', err);
+      sendResponse({ success: false, error: err.message });
+    });
+    return true;
   }
   
   return true;
@@ -229,70 +236,85 @@ function getVideoId() {
   return urlParams.get('v');
 }
 
-// Improved transcript fetching with retry logic and better error handling
-async function fetchTranscript(videoId, retryCount = 0) {
-  const maxRetries = 3;
-  console.log(`Fetching transcript for video ${videoId}, attempt ${retryCount + 1}/${maxRetries + 1}`);
-  
+// Extract transcript using ytInitialPlayerResponse (uses YouTube's own caption URLs)
+// Returns { transcript: string, segments: array|null } or null
+async function fetchTranscriptFromPlayerResponse() {
   try {
-    // Method 1: Try YouTube's internal timedtext API with multiple language attempts
-    const languages = ['en', 'en-US', 'en-GB', 'auto'];
-    
-    for (const lang of languages) {
-      try {
-        console.log(`Trying timedtext API with language: ${lang}`);
-        const response = await fetch(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=json3`);
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.events && data.events.length > 0) {
-            const transcript = data.events
-              .filter(event => event.segs)
-              .map(event => event.segs.map(seg => seg.utf8).join(''))
-              .join(' ')
-              .replace(/\n/g, ' ')
-              .replace(/\s+/g, ' ')
-              .trim();
-            
-            if (transcript.length > 50 && !isUIText(transcript)) {
-              console.log(`Successfully fetched transcript via API (${lang}):`, transcript.substring(0, 100) + '...');
-              return transcript;
-            }
-          }
-        }
-      } catch (e) {
-        console.log(`Timedtext API failed for ${lang}:`, e.message);
-      }
+    const tracks = window.ytInitialPlayerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (!tracks?.length) return null;
+
+    const track = tracks.find(t => t.languageCode === 'en' && !t.kind) ||
+                  tracks.find(t => t.languageCode?.startsWith('en')) ||
+                  tracks.find(t => t.kind === 'asr') ||
+                  tracks[0];
+    if (!track?.baseUrl) return null;
+
+    const url = track.baseUrl.includes('fmt=') ? track.baseUrl : `${track.baseUrl}&fmt=json3`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const text = await res.text();
+    if (!text?.trim()) return null;
+
+    if (text.trim().startsWith('{')) {
+      const data = JSON.parse(text);
+      if (!data.events?.length) return null;
+
+      const segments = [];
+      data.events.filter(e => e.segs && e.tStartMs !== undefined).forEach(e => {
+        const startTime = Math.floor(e.tStartMs / 1000);
+        const duration = e.dDurationMs ? Math.floor(e.dDurationMs / 1000) : 5;
+        const segText = e.segs.map(s => s.utf8 || '').join('').trim();
+        if (!segText) return;
+        const mins = Math.floor(startTime / 60);
+        const secs = startTime % 60;
+        segments.push({
+          text: segText,
+          startTime,
+          endTime: startTime + duration,
+          timestamp: `${mins}:${secs.toString().padStart(2, '0')}`,
+          youtubeTimestamp: `${startTime}s`
+        });
+      });
+
+      if (!segments.length) return null;
+      const transcript = segments.map(s => s.text).join(' ').replace(/\s+/g, ' ').trim();
+      if (transcript.length < 50) return null;
+      console.log(`Fetched transcript via ytInitialPlayerResponse: ${segments.length} segments`);
+      return { transcript, segments };
+
+    } else if (text.trim().startsWith('<')) {
+      const xml = new DOMParser().parseFromString(text, 'text/xml');
+      const transcript = Array.from(xml.querySelectorAll('text'))
+        .map(t => t.textContent.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").trim())
+        .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+      if (transcript.length < 50) return null;
+      console.log('Fetched transcript via ytInitialPlayerResponse (XML)');
+      return { transcript, segments: null };
     }
-    
-    // Method 2: Try to extract from page with improved reliability and filtering
-    console.log('API methods failed, trying page extraction...');
+  } catch (e) {
+    console.log('fetchTranscriptFromPlayerResponse failed:', e.message);
+  }
+  return null;
+}
+
+async function fetchTranscript(videoId) {
+  console.log(`Fetching transcript for ${videoId}`);
+  try {
+    // Method 1: ytInitialPlayerResponse (fast, reliable)
+    const result = await fetchTranscriptFromPlayerResponse();
+    if (result) return result.transcript;
+
+    // Method 2: DOM extraction (requires transcript panel to be open)
+    console.log('Player response unavailable, trying page extraction...');
     const pageTranscript = await extractTranscriptFromPage();
-    if (pageTranscript && pageTranscript !== 'No transcript available' && pageTranscript.length > 50 && !isUIText(pageTranscript)) {
-      console.log('Successfully extracted transcript from page');
+    if (pageTranscript && pageTranscript !== 'No transcript available' && pageTranscript.length > 50) {
       return pageTranscript;
     }
-    
-    // Method 3: If all else fails and we haven't exceeded retries, wait and try again
-    if (retryCount < maxRetries) {
-      console.log(`All methods failed, retrying in ${(retryCount + 1) * 2} seconds...`);
-      await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 2000));
-      return await fetchTranscript(videoId, retryCount + 1);
-    }
-    
-    // Final fallback: try to get video description or any available text
-    console.log('All transcript methods failed, trying description fallback...');
+
     return await getVideoDescriptionFallback();
-    
   } catch (error) {
     console.log('Error in fetchTranscript:', error);
-    
-    if (retryCount < maxRetries) {
-      console.log(`Retrying due to error in ${(retryCount + 1) * 2} seconds...`);
-      await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 2000));
-      return await fetchTranscript(videoId, retryCount + 1);
-    }
-    
     return await getVideoDescriptionFallback();
   }
 }
@@ -319,134 +341,54 @@ function isUIText(text) {
 }
 
 // Fetch transcript with timestamps for Live Summary
-async function fetchTranscriptWithTimestamps(videoId, retryCount = 0) {
-  const maxRetries = 3;
-  console.log(`Fetching timestamped transcript for video ${videoId}, attempt ${retryCount + 1}/${maxRetries + 1}`);
-  
+async function fetchTranscriptWithTimestamps(videoId) {
+  console.log(`Fetching timestamped transcript for ${videoId}`);
   try {
-    // Method 1: Try YouTube's internal timedtext API with timestamps
-    const languages = ['en', 'en-US', 'en-GB', 'auto'];
-    
-    for (const lang of languages) {
-      try {
-        console.log(`Trying timedtext API with language: ${lang} for timestamps`);
-        const response = await fetch(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=json3`);
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.events && data.events.length > 0) {
-            // Build both plain transcript and timestamped version
-            const timestampedSegments = [];
-            let plainTranscript = '';
-            
-            data.events
-              .filter(event => event.segs && event.tStartMs !== undefined)
-              .forEach(event => {
-                const startTime = Math.floor(event.tStartMs / 1000);
-                const duration = event.dDurationMs ? Math.floor(event.dDurationMs / 1000) : 5;
-                const text = event.segs.map(seg => seg.utf8).join('').trim();
-                
-                if (text && text.length > 0) {
-                  const minutes = Math.floor(startTime / 60);
-                  const seconds = startTime % 60;
-                  const timestamp = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                  
-                  timestampedSegments.push({
-                    text: text,
-                    startTime: startTime,
-                    endTime: startTime + duration,
-                    timestamp: timestamp,
-                    youtubeTimestamp: `${startTime}s`
-                  });
-                  
-                  plainTranscript += text + ' ';
-                }
-              });
-            
-            if (timestampedSegments.length > 0) {
-              console.log(`Successfully fetched timestamped transcript via API (${lang}):`, timestampedSegments.length, 'segments');
-              
-              // Store both versions
-              transcriptData = plainTranscript.replace(/\s+/g, ' ').trim();
-              timestampedTranscriptData = timestampedSegments;
-              
-              return {
-                transcript: transcriptData,
-                timestampedTranscript: timestampedSegments,
-                success: true
-              };
-            }
-          }
-        }
-      } catch (e) {
-        console.log(`Timestamped timedtext API failed for ${lang}:`, e.message);
-      }
+    // Method 1: ytInitialPlayerResponse (includes timestamps)
+    const result = await fetchTranscriptFromPlayerResponse();
+    if (result) {
+      transcriptData = result.transcript;
+      timestampedTranscriptData = result.segments;
+      return { transcript: result.transcript, timestampedTranscript: result.segments, success: true };
     }
-    
-    // Method 2: Try to extract from page with timestamps
-    console.log('API methods failed, trying page extraction with timestamps...');
+
+    // Method 2: DOM extraction with timestamps
+    console.log('Player response unavailable, trying page extraction...');
     const pageResult = await extractTimestampedTranscriptFromPage();
-    if (pageResult && pageResult.transcript && pageResult.transcript.length > 50) {
-      console.log('Successfully extracted timestamped transcript from page');
+    if (pageResult?.transcript?.length > 50) {
       transcriptData = pageResult.transcript;
       timestampedTranscriptData = pageResult.timestampedTranscript;
       return pageResult;
     }
-    
-    // Method 3: Fallback to regular transcript
-    console.log('Timestamped extraction failed, falling back to regular transcript...');
-    const regularTranscript = await fetchTranscript(videoId);
-    if (regularTranscript && regularTranscript !== 'No transcript available') {
-      transcriptData = regularTranscript;
-      return {
-        transcript: regularTranscript,
-        timestampedTranscript: null,
-        success: true,
-        fallback: true
-      };
+
+    // Method 3: Plain transcript fallback
+    const plainTranscript = await fetchTranscript(videoId);
+    if (plainTranscript && plainTranscript !== 'No transcript available') {
+      transcriptData = plainTranscript;
+      return { transcript: plainTranscript, timestampedTranscript: null, success: true, fallback: true };
     }
-    
-    // If all else fails and we haven't exceeded retries, wait and try again
-    if (retryCount < maxRetries) {
-      console.log(`All timestamped methods failed, retrying in ${(retryCount + 1) * 2} seconds...`);
-      await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 2000));
-      return await fetchTranscriptWithTimestamps(videoId, retryCount + 1);
-    }
-    
-    return {
-      transcript: null,
-      timestampedTranscript: null,
-      success: false,
-      error: 'No transcript available'
-    };
-    
+
+    return { transcript: null, timestampedTranscript: null, success: false, error: 'No transcript available' };
   } catch (error) {
     console.log('Error in fetchTranscriptWithTimestamps:', error);
-    
-    if (retryCount < maxRetries) {
-      console.log(`Retrying due to error in ${(retryCount + 1) * 2} seconds...`);
-      await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 2000));
-      return await fetchTranscriptWithTimestamps(videoId, retryCount + 1);
-    }
-    
-    return {
-      transcript: null,
-      timestampedTranscript: null,
-      success: false,
-      error: error.message
-    };
+    return { transcript: null, timestampedTranscript: null, success: false, error: error.message };
   }
 }
 
-// Extract from transcript segments (most reliable method)
+// Extract from transcript segments
 async function extractFromTranscriptSegments() {
-  // More specific selectors for actual transcript content
+  // Selector pairs: [container, text-child] — try text-child first for precision,
+  // fall back to grabbing textContent of the whole container.
   const segmentSelectors = [
+    // New YouTube DOM (2024+): transcript-segment-view-model
+    'transcript-segment-view-model span[role="text"]',
+    'transcript-segment-view-model .ytAttributedStringHost',
+    // Legacy DOM: ytd-transcript-segment-renderer
     'ytd-transcript-segment-renderer .segment-text',
-    'ytd-transcript-segment-renderer [class*="cue"]',
-    '.ytd-transcript-segment-list-renderer .segment-text',
-    '.transcript-segment .segment-text',
-    '[data-testid="transcript-segment"] .segment-text'
+    'ytd-transcript-segment-renderer yt-formatted-string',
+    // Generic fallback: grab any transcript container and pull its text
+    'transcript-segment-view-model',
+    'ytd-transcript-segment-renderer'
   ];
   
   for (const selector of segmentSelectors) {
@@ -456,16 +398,23 @@ async function extractFromTranscriptSegments() {
       
       const transcriptParts = Array.from(elements)
         .map(el => {
-          const text = el.textContent?.trim();
-          // Filter out obvious UI elements
-          if (!text || text.length < 3) return null;
-          if (text.toLowerCase().includes('subscribe') || 
-              text.toLowerCase().includes('tap to') ||
-              text.toLowerCase().includes('play (k)') ||
-              text.toLowerCase().includes('pull up')) return null;
+          // For container elements, skip timestamp/a11y children and grab only text
+          const tag = el.tagName?.toLowerCase();
+          let text;
+          if (tag === 'transcript-segment-view-model' || tag === 'ytd-transcript-segment-renderer') {
+            // Get only the text node from the span[role=text] or .segment-text child
+            const textEl = el.querySelector('span[role="text"], .segment-text, yt-formatted-string');
+            text = (textEl || el).textContent?.trim();
+          } else {
+            text = el.textContent?.trim();
+          }
+          if (!text || text.length < 2) return null;
+          // Skip standalone timestamp strings like "0:05" or accessibility labels
+          if (/^\d+:\d+(:\d+)?$/.test(text)) return null;
+          if (/^\d+ (second|minute|hour)/.test(text)) return null;
           return text;
         })
-        .filter(text => text !== null);
+        .filter(Boolean);
       
       if (transcriptParts.length > 0) {
         const transcript = transcriptParts.join(' ').replace(/\s+/g, ' ').trim();
@@ -478,84 +427,6 @@ async function extractFromTranscriptSegments() {
   }
   
   throw new Error('No valid transcript segments found');
-}
-
-// Extract from transcript panel with better filtering
-async function extractFromTranscriptPanel() {
-  const panelSelectors = [
-    'ytd-transcript-renderer',
-    '.ytd-transcript-renderer',
-    '[data-testid="transcript-content"]',
-    '.transcript-content',
-    '#transcript-content'
-  ];
-  
-  for (const selector of panelSelectors) {
-    const panel = document.querySelector(selector);
-    if (panel) {
-      console.log(`Found transcript panel with selector: ${selector}`);
-      
-      // Try to get only the transcript text, not UI elements
-      const transcriptElements = panel.querySelectorAll('.segment-text, [class*="cue"], [class*="transcript-text"]');
-      
-      if (transcriptElements.length > 0) {
-        const transcriptParts = Array.from(transcriptElements)
-          .map(el => el.textContent?.trim())
-          .filter(text => text && text.length > 3 && !isUIText(text));
-        
-        if (transcriptParts.length > 0) {
-          const transcript = transcriptParts.join(' ').replace(/\s+/g, ' ').trim();
-          if (transcript.length > 100) {
-            return transcript;
-          }
-        }
-      }
-      
-      // Fallback: get all text but filter more aggressively
-      const allText = panel.textContent?.trim();
-      if (allText && allText.length > 100) {
-        // Remove common UI text patterns
-        const cleanedText = allText
-          .replace(/tap to unmute/gi, '')
-          .replace(/pull up for precise seeking/gi, '')
-          .replace(/play \(k\)/gi, '')
-          .replace(/subscribe/gi, '')
-          .replace(/subscribed/gi, '')
-          .replace(/scroll for details/gi, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        
-        if (cleanedText.length > 100 && !isUIText(cleanedText)) {
-          return cleanedText;
-        }
-      }
-    }
-  }
-  
-  throw new Error('No transcript panel found');
-}
-
-// Extract from video description as last resort
-async function extractFromVideoDescription() {
-  const descriptionSelectors = [
-    '#meta-contents #description-text',
-    '.ytd-video-secondary-info-renderer #description',
-    '[data-testid="description"]',
-    '#description',
-    '.description'
-  ];
-  
-  for (const selector of descriptionSelectors) {
-    const element = document.querySelector(selector);
-    if (element) {
-      const text = element.textContent?.trim();
-      if (text && text.length > 100) {
-        return text.replace(/\s+/g, ' ').trim();
-      }
-    }
-  }
-  
-  throw new Error('No description found');
 }
 
 // Final fallback for when everything else fails
@@ -706,6 +577,31 @@ function createSummarizeButton() {
     gptButton.style.backgroundColor = '#10a37f';
   });
   
+  // Create "Regenerate" button — clears session cache and forces a fresh summary
+  const regenerateButton = document.createElement('button');
+  regenerateButton.id = 'yt-regenerate-btn';
+  regenerateButton.title = 'Clear cache & regenerate summary';
+  regenerateButton.innerHTML = '&#x21BA;'; // ↺
+  regenerateButton.style.cssText = `
+    background: #555;
+    color: white;
+    border: none;
+    padding: 10px 13px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 17px;
+    display: flex;
+    align-items: center;
+    transition: background-color 0.2s;
+  `;
+  regenerateButton.addEventListener('mouseenter', () => {
+    regenerateButton.style.backgroundColor = '#333';
+  });
+  regenerateButton.addEventListener('mouseleave', () => {
+    regenerateButton.style.backgroundColor = '#555';
+  });
+  regenerateButton.addEventListener('click', handleRegenerateSummary);
+
   // Add click handlers
   summaryButton.addEventListener('click', handleSummarize);
   gptButton.addEventListener('click', handleOpenInGPT);
@@ -715,6 +611,7 @@ function createSummarizeButton() {
   buttonWrapper.style.display = 'flex';
   buttonWrapper.style.gap = '8px';
   buttonWrapper.appendChild(summaryButton);
+  buttonWrapper.appendChild(regenerateButton);
   buttonWrapper.appendChild(gptButton);
   
   buttonContainer.appendChild(buttonWrapper);
@@ -747,8 +644,50 @@ function createSummarizeButton() {
   console.log('✅ Summary button created and inserted successfully');
 }
 
+// Clear all cached session data for the current video and force-generate a fresh summary
+async function handleRegenerateSummary() {
+  const videoId = getVideoId();
+  if (!videoId) return;
+
+  try {
+    const sessionKey = `liveChatSession_${videoId}`;
+    // Remove the session entry
+    await chrome.storage.local.remove([sessionKey]);
+
+    // Also wipe chatHistory from savedVideos for this video (keep the entry, just clear history)
+    const savedResult = await chrome.storage.local.get(['savedVideos']);
+    const savedVideos = savedResult.savedVideos || [];
+    const updated = savedVideos.map(v =>
+      v.videoId === videoId ? { ...v, chatHistory: [] } : v
+    );
+    await chrome.storage.local.set({ savedVideos: updated });
+
+    // Clear in-memory transcript cache
+    transcriptData = '';
+    timestampedTranscriptData = null;
+
+    console.log('🗑️ Cache cleared for video:', videoId);
+  } catch (err) {
+    console.warn('Could not clear video cache:', err);
+  }
+
+  // Now trigger a normal fresh summarise
+  handleSummarize();
+}
+
 // Handle summarize button click
 async function handleSummarize() {
+  // Guard: if the extension was reloaded while this tab was open the chrome APIs
+  // become unavailable. Detect this early and ask the user to refresh the page.
+  if (!chrome?.storage?.local) {
+    showLiveSummaryError('Extension was updated. Please refresh this page and try again.');
+    return;
+  }
+
+  // Open the side panel NOW — before any await — while the user-gesture context is
+  // still alive. chrome.sidePanel.open() silently fails if called after an await.
+  chrome.runtime.sendMessage({ action: 'openSidePanel' });
+
   try {
     summaryButton.disabled = true;
     summaryButton.innerHTML = `
@@ -862,64 +801,27 @@ async function handleSummarize() {
     
     summaryButton.innerHTML = `
       <div style="width: 20px; height: 20px; border: 2px solid #ffffff; border-top: 2px solid transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px;"></div>
-      Generating summary...
+      Preparing Live Summary...
     `;
     
-    // Generate an initial summary
+    // Create proper video data with all necessary information
     const title = document.querySelector('h1.ytd-watch-metadata')?.textContent?.trim() || 'YouTube Video';
-    const prompt = `Video Title: ${title}\n\nTranscript: ${transcriptResult.transcript}\n\nProvide a comprehensive summary of this YouTube video. Focus on the main topics, key points, and important insights. Make it detailed enough to understand the video's content without watching it.`;
+    const videoUrl = window.location.href;
+    const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
     
-    let videoData;
+    const videoData = {
+      videoId,
+      title,
+      url: videoUrl,
+      thumbnail,
+      transcript: transcriptResult.transcript,
+      timestampedTranscript: transcriptResult.timestampedTranscript,
+      chatHistory: [],
+      isNewVideo: true
+    };
     
-    try {
-      // const summary = await makeApiRequest(prompt);
-      
-      // Parse the summary
-      // let [cleanSummary, originalLang] = getLanguage(summary || '');
-      // let [finalSummary, topic] = parseText(cleanSummary);
-      
-      // // Create initial chat history with the summary
-      // const initialChatHistory = [{
-      //   type: 'summary',
-      //   message: 'Generate a summary of this video',
-      //   response: finalSummary,
-      //   timestamp: new Date().toISOString()
-      // }];
-      
-      // const videoUrl = window.location.href;
-      // const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-      
-      // videoData = {
-      //   videoId,
-      //   title,
-      //   url: videoUrl,
-      //   thumbnail,
-      //   transcript: transcriptResult.transcript,
-      //   timestampedTranscript: transcriptResult.timestampedTranscript,
-      //   chatHistory: initialChatHistory,
-      //   isNewVideo: true
-      // };
-      
-      // Send topic to popup for saving
-      chrome.runtime.sendMessage({ action: "updateTags", data: title });
-      
-    } catch (apiError) {
-      console.error('Error generating summary:', apiError);
-      // Still proceed with Live Summary even if initial summary fails
-      const videoUrl = window.location.href;
-      const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-      
-      // videoData = {
-      //   videoId,
-      //   title,
-      //   url: videoUrl,
-      //   thumbnail,
-      //   transcript: transcriptResult.transcript,
-      //   timestampedTranscript: transcriptResult.timestampedTranscript,
-      //   chatHistory: [],
-      //   isNewVideo: true
-      // };
-    }
+    // Send topic to popup for saving
+    chrome.runtime.sendMessage({ action: "updateTags", data: title });
     
     // Update button to show opening popup
     summaryButton.innerHTML = `
@@ -931,7 +833,7 @@ async function handleSummarize() {
     console.log('🎬 Sending openLiveSummary message with new video data:', videoData);
     chrome.runtime.sendMessage({
       action: 'openLiveSummary',
-      videoData: {}
+      videoData: videoData
     }, (response) => {
       console.log('Response from background script:', response);
       showLiveSummaryMessage('New summary created!', 'A fresh summary has been generated. You can now chat about this video.');
@@ -956,15 +858,25 @@ async function handleSummarize() {
 
 // Handle "Open in GPT" button click
 async function handleOpenInGPT() {
+  if (!chrome?.storage?.local) {
+    showLiveSummaryError('Extension was updated. Please refresh this page and try again.');
+    return;
+  }
+
   try {
     const videoId = getVideoId();
     if (!videoId) {
       throw new Error('Could not get video ID');
     }
     
-    let transcript = transcriptData;
-    if (!transcript) {
-      transcript = await fetchTranscript(videoId);
+    // Always fetch fresh — never reuse cached data from a previous video
+    let transcript = await fetchTranscript(videoId);
+    if (!transcript) throw new Error('Could not fetch transcript');
+
+    // Truncate to ~80k chars — enough for any video, avoids storage quota errors
+    const MAX_TRANSCRIPT_CHARS = 80000;
+    if (transcript.length > MAX_TRANSCRIPT_CHARS) {
+      transcript = transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '\n[transcript truncated]';
     }
     
     const title = document.querySelector('h1.ytd-watch-metadata')?.textContent?.trim() || 'YouTube Video';
@@ -1005,10 +917,12 @@ Format your response in a clear, well-structured manner.`;
 async function openChatGPTWithPrompt(prompt, platformName = 'YouTube', platformColor = '#ff0000') {
   try {
     // Store for auto-injection and open ChatGPT
-    await chrome.storage.local.set({ 
-      pendingChatGptPrompt: prompt,
-      promptTimestamp: Date.now()
-    });
+    if (chrome?.storage?.local) {
+      await chrome.storage.local.set({ 
+        pendingChatGptPrompt: prompt,
+        promptTimestamp: Date.now()
+      });
+    }
     
     // Copy to clipboard as backup
     try {
@@ -1021,7 +935,7 @@ async function openChatGPTWithPrompt(prompt, platformName = 'YouTube', platformC
     showChatGPTAutoNotification(platformName, platformColor);
     
     // Open ChatGPT - the content script will handle auto-paste and send
-    window.open('https://chat.openai.com/', '_blank');
+    window.open('https://chatgpt.com/?model=auto&temporary-chat=true', '_blank');
     
   } catch (error) {
     console.error('Error in ChatGPT integration:', error);
@@ -1302,25 +1216,16 @@ async function extractTranscriptFromPage() {
     await activateTranscriptPanel();
     
     // Wait for transcript to load
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 5000));
     
-    // Try multiple extraction methods with better filtering
-    const methods = [
-      extractFromTranscriptSegments,
-      extractFromTranscriptPanel,
-      extractFromVideoDescription
-    ];
-    
-    for (const method of methods) {
-      try {
-        const result = await method();
-        if (result && result.length > 50 && !isUIText(result)) {
-          console.log(`Transcript extracted via ${method.name}`);
-          return result;
-        }
-      } catch (e) {
-        console.log(`Method ${method.name} failed:`, e.message);
+    try {
+      const result = await extractFromTranscriptSegments();
+      if (result && result.length > 50 && !isUIText(result)) {
+        console.log('Transcript extracted from segments');
+        return result;
       }
+    } catch (e) {
+      console.log('extractFromTranscriptSegments failed:', e.message);
     }
     
     return 'No transcript available';
@@ -1346,7 +1251,7 @@ async function activateTranscriptPanel() {
   for (const selector of transcriptSelectors) {
     try {
       const button = document.querySelector(selector);
-      if (button && !button.classList.contains('active') && !button.disabled) {
+      if (button && !button.disabled) {
         console.log(`Found transcript button with selector: ${selector}`);
         button.click();
         await new Promise(resolve => setTimeout(resolve, 1500));

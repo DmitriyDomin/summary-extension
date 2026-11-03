@@ -7,10 +7,24 @@ class LiveChatManager {
     this.inputContainer = null;
     this.videoInfoContainer = null;
     this.isInitialized = false; // Add state tracking
+    this.isInitializing = false; // Prevent duplicate initialization calls
   }
 
   async initialize() {
     console.log('🎬 LiveChatManager: Starting initialization...');
+    
+    // FIXED: Prevent duplicate initializations
+    if (this.isInitializing) {
+      console.log('🎬 LiveChatManager: Already initializing, skipping duplicate call');
+      return;
+    }
+    
+    if (this.isInitialized) {
+      console.log('🎬 LiveChatManager: Already initialized, skipping');
+      return;
+    }
+    
+    this.isInitializing = true;
     
     this.chatContainer = document.getElementById('chatMessages');
     this.inputContainer = document.getElementById('chatInput');
@@ -45,32 +59,28 @@ class LiveChatManager {
         hasSavedVideoWaiting = true;
         
         // Initialize directly with saved video data
-        await this.initializeWithCurrentVideo(response.videoData);
+        // await this.initializeWithCurrentVideo(response.videoData);
+        this.isInitializing = false;
+        this.isInitialized = true;
         return; // Exit early - don't run restorePreviousSession
       }
     } catch (error) {
       console.log('🎬 LiveChatManager: No saved video data waiting:', error.message);
     }
     
-    // Only restore session if we're not already initialized with a video AND no saved video waiting
-    if (!this.isInitialized || !this.currentVideoId || !this.youtubeLiveSummary) {
-      console.log('🎬 LiveChatManager: First initialization, attempting restore...');
+    console.log('🎬 LiveChatManager: First initialization, attempting restore...');
       // Add a small delay to ensure DOM is fully ready and avoid flash errors
       setTimeout(async () => {
         try {
-          await this.restorePreviousSession();
+          // await this.restorePreviousSession();
+          this.isInitialized = true;
         } catch (error) {
           console.error('🎬 Error during session restore:', error);
           this.showNoVideoMessage();
+        } finally {
+          this.isInitializing = false;
         }
       }, 300);
-    } else {
-      console.log('🎬 LiveChatManager: Already initialized with video:', this.currentVideoId, '- preserving current state');
-      // Just make sure the UI is properly displayed
-      if (this.youtubeLiveSummary && this.youtubeLiveSummary.currentVideoData) {
-        this.updateVideoInfo(this.youtubeLiveSummary.currentVideoData);
-      }
-    }
   }
 
   // Setup event listeners for live chat functionality
@@ -139,6 +149,7 @@ class LiveChatManager {
       const sessionResult = await chrome.storage.local.get([sessionKey]);
       const savedSession = sessionResult[sessionKey];
 
+
       if (savedSession && savedSession.videoData && savedSession.timestamp > Date.now() - (24 * 60 * 60 * 1000)) {
         console.log('🎬 Restoring from temporary session:', savedSession.videoData.title);
         await this.loadVideoWithHistory({ ...savedSession.videoData, isFromSavedVideo: false }, savedSession.chatHistory || []);
@@ -175,6 +186,7 @@ class LiveChatManager {
 
   // FIXED: New method to get current video info through background script
   async tryGetCurrentVideoInfo() {
+    this.isInitialized = false;
     console.log('🎬 Trying to get current video info...');
     
     try {
@@ -262,10 +274,10 @@ class LiveChatManager {
   async initializeWithCurrentVideo(videoData = null) {
     console.log('🎬 LiveChatManager: initializeWithCurrentVideo called with:', videoData?.title || 'no video data');
     
-    if (this.isInitialized && this.currentVideoId) {
-      console.log('🎬 Already initialized with video:', this.currentVideoId, '- skipping re-initialization');
-      return;
-    }
+    // if (this.isInitialized && this.currentVideoId) {
+    //   console.log('🎬 Already initialized with video:', this.currentVideoId, '- skipping re-initialization');
+    //   return;
+    // }
 
     this.setupEventListeners();
     
@@ -281,6 +293,9 @@ class LiveChatManager {
       const sessionKey = `liveChatSession_${videoData.videoId}`;
       const sessionResult = await chrome.storage.local.get([sessionKey]);
       const savedSession = sessionResult[sessionKey];
+      const savedVideosResult = await chrome.storage.local.get(['savedVideos']);
+      const savedVideos = savedVideosResult.savedVideos || [];
+      const doesExistInSaved = !!savedVideos.find(v => v.videoId === this.currentVideoId);
 
       if (savedSession && savedSession.videoData && savedSession.timestamp > Date.now() - (24 * 60 * 60 * 1000)) {
         console.log('🎬 Found temporary session for this video - loading from temp storage:', savedSession.videoData.title);
@@ -289,7 +304,7 @@ class LiveChatManager {
         // Load from temporary session storage (preserves transcript and recent chat)
         await this.loadVideoWithHistory({ 
           ...savedSession.videoData, 
-          isFromSavedVideo: false 
+          isFromSavedVideo: doesExistInSaved 
         }, savedSession.chatHistory || []);
         this.isInitialized = true;
         return;
@@ -525,29 +540,9 @@ class LiveChatManager {
       this.updateGoBackButtonVisibility(false);
     }
     
-    // Initialize with video data
+    // Initialize with video data - this will handle chat history restoration internally
     await this.youtubeLiveSummary.initialize(videoDataWithHistory);
     this.updateVideoInfo(videoData);
-    
-    // Clear any existing chat display first
-    const chatMessages = document.getElementById('chatMessages');
-    // if (chatMessages) {
-    //   chatMessages.innerHTML = '';
-    // }
-    
-    // Restore chat history in the UI
-    if (chatHistory && chatHistory.length > 0) {
-      chatHistory.forEach(chat => {
-        // Only add user message if it's not the initial summary
-        if (chat.type !== 'summary') {
-          this.youtubeLiveSummary.addMessageToChat(chat.message, 'user', false); // Don't auto-save when restoring
-        }
-        this.youtubeLiveSummary.addMessageToChat(chat.response, 'assistant', false); // Don't auto-save when restoring
-      });
-      
-      // Set the chat history in the YouTube Live Summary instance
-      this.youtubeLiveSummary.chatHistory = chatHistory;
-    }
     
     // Save to temporary session storage (with transcript if available)
     await this.saveCurrentSession();

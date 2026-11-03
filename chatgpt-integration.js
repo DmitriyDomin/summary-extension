@@ -3,25 +3,21 @@
 
 // Store prompt and open ChatGPT with auto-send
 async function openChatGPTWithPrompt(prompt, platformName = 'Video', platformColor = '#10a37f') {
+  // Always store first and await — this is what the ChatGPT content script reads
+  await chrome.storage.local.set({
+    pendingChatGptPrompt: prompt,
+    promptTimestamp: Date.now()
+  });
+
+  // Clipboard copy is a bonus; failure must not block the flow
   try {
-    // Copy to clipboard
     await navigator.clipboard.writeText(prompt);
-    
-    // Show enhanced notification with instructions
-    showChatGPTNotification(platformName, platformColor);
-    
-    // Store for auto-injection and open ChatGPT
-    chrome.storage.local.set({ 
-      pendingChatGptPrompt: prompt,
-      promptTimestamp: Date.now()
-    });
-    
-    window.open('https://chat.openai.com/', '_blank');
-    
-  } catch (clipboardError) {
-    console.warn('Clipboard access failed, showing manual copy modal');
-    showTranscriptModal(prompt, platformName, platformColor);
+  } catch (e) {
+    console.warn('Clipboard copy failed (non-critical):', e.message);
   }
+
+  showChatGPTNotification(platformName, platformColor);
+  window.open('https://chatgpt.com/?model=auto&temporary-chat=true', '_blank');
 }
 
 // Show enhanced notification for ChatGPT integration
@@ -126,17 +122,19 @@ function showTranscriptModal(prompt, platformName = 'Video', platformColor = '#1
     textarea.select();
     
     try {
-      await navigator.clipboard.writeText(textarea.value);
-      
-      // Store for auto-injection
-      chrome.storage.local.set({ 
+      // Store for auto-injection first — must be awaited before opening tab
+      await chrome.storage.local.set({
         pendingChatGptPrompt: textarea.value,
         promptTimestamp: Date.now()
       });
+
+      // Clipboard copy (best-effort)
+      try {
+        await navigator.clipboard.writeText(textarea.value);
+      } catch (e) { /* non-critical */ }
       
       // Show success feedback
       const button = event.target.closest('button');
-      const originalText = button.innerHTML;
       button.innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
           <path d="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z" />
@@ -147,13 +145,8 @@ function showTranscriptModal(prompt, platformName = 'Video', platformColor = '#1
       
       setTimeout(() => {
         modal.remove();
-        window.open('https://chat.openai.com/', '_blank');
-      }, 1000);
-      
-    } catch (err) {
-      textarea.select();
-      alert('Please copy the text manually (Ctrl+C or Cmd+C)');
-    }
+        window.open('https://chatgpt.com/?model=auto&temporary-chat=true', '_blank');
+      }, 500);
   };
   
   modal.appendChild(content);

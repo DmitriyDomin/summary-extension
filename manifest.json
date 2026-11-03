@@ -9,7 +9,7 @@
     }
   ],
   "description": "Generate summaries of web content using GPT-4 API.",
-  "permissions": ["contextMenus", "activeTab", "tabs", "storage", "sidePanel", "scripting"],
+  "permissions": ["contextMenus", "activeTab", "tabs", "storage", "unlimitedStorage", "sidePanel", "scripting"],
   "action": {
     "default_title": "Open side panel"
   },

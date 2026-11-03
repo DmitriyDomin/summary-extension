@@ -167,11 +167,14 @@ class YouTubeLiveSummary {
       console.log('🎬 Restoring', this.chatHistory.length, 'chat messages');
       
       this.chatHistory.forEach(chat => {
-        // Only add user message if it's not the initial summary
+        // FIXED: Skip both user message AND assistant response for summary type entries
         if (chat.type !== 'summary') {
           this.addMessageToChat(chat.message, 'user', false); // Don't auto-save when restoring
+          this.addMessageToChat(chat.response, 'assistant', false); // Don't auto-save when restoring
+        } else {
+          // For summary entries, only add the assistant response (the summary itself)
+          this.addMessageToChat(chat.response, 'assistant', false);
         }
-        this.addMessageToChat(chat.response, 'assistant', false); // Don't auto-save when restoring
       });
     }
   }
@@ -723,7 +726,7 @@ Based on the video content above, please provide a detailed and helpful response
       if (true) {
         return await apiService.getGeminiResponse(
           apiKey, 
-          'gemini-2.0-flash-001', 
+          'gemini-3.5-flash', 
           "You are a helpful AI assistant that analyzes YouTube video content and provides detailed, accurate responses based on video transcripts.", 
           contextualPrompt, 
           0.3

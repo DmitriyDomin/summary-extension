@@ -2,8 +2,28 @@
 let transcriptData = '';
 let summaryButton = null;
 let isUdemy = false;
+let cachedCourseTitle = null; // cache real course title once resolved
 
 console.log('Udemy content script loaded on:', window.location.href);
+
+// Helper to build a normalized videoData object (mirrors YouTube structure) for side panel
+function buildUdemyVideoDataObject({ transcript, lessonTitle, courseTitle, url }) {
+  const courseId = extractCourseIdFromUrl(url || window.location.href);
+  const title = `${courseTitle} - ${lessonTitle}`;
+  // Provide a deterministic pseudo videoId using course + lesson (no hashing to keep simple)
+  const videoId = `udemy_${courseId}_${encodeURIComponent(lessonTitle).slice(0,40)}`;
+  return {
+    videoId,
+    title,
+    url: url || window.location.href,
+    thumbnail: getUdemyThumbnailForCourse(),
+    transcript: transcript || '',
+    timestampedTranscript: null, // Udemy currently no timestamped extraction
+    platform: 'udemy',
+    isNewVideo: true,
+    chatHistory: []
+  };
+}
 
 // Built-in API functions (similar to YouTube script)
 async function getApiKey() {
@@ -93,371 +113,120 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'getSummaryTopic') {
     const topicElement = document.querySelector('#udemy-summary-display h3');
     sendResponse({ value: topicElement ? topicElement.textContent : null });
+  } else if (request.action === 'getUdemyVideoData') {
+    // Get current Udemy course/lesson data for quiz manager
+    (async () => {
+      try {
+        const courseTitle = getCourseTitle();
+        const lessonTitle = getLessonTitle();
+        const moduleTitle = getModuleName();
+        const courseUrl = window.location.href;
+        
+        // FIXED: Always try to fetch transcript for quiz data, but with timeout
+        console.log('🎯 Fetching transcript for Udemy quiz data...');
+        let transcript = transcriptData; // Use cached if available
+        
+        if (!transcript) {
+          try {
+            // Fetch transcript with a reasonable timeout for quiz use
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Transcript fetch timeout')), 8000)
+            );
+            
+            transcript = await Promise.race([
+              fetchUdemyTranscript(),
+              timeoutPromise
+            ]);
+            
+            // Cache the transcript for future use
+            if (transcript && transcript !== 'No transcript available') {
+              transcriptData = transcript;
+              console.log('🎯 Successfully fetched and cached Udemy transcript');
+            }
+          } catch (error) {
+            console.log('🎯 Transcript fetch failed or timed out:', error.message);
+            // Continue without transcript - quiz will handle fallback
+            transcript = null;
+          }
+        }
+        
+        const courseData = {
+          courseId: extractCourseIdFromUrl(courseUrl),
+          title: `${courseTitle} - ${lessonTitle}`,
+          courseTitle: courseTitle,
+          lessonTitle: lessonTitle,
+          moduleTitle: moduleTitle,
+          url: courseUrl,
+          thumbnail: getUdemyThumbnailForCourse(),
+          transcript: transcript || null,
+          platform: 'udemy'
+        };
+        
+        console.log('🎯 Sending Udemy course data to quiz manager:', {
+          ...courseData,
+          transcript: courseData.transcript ? courseData.transcript.substring(0, 100) + '...' : 'none'
+        });
+        sendResponse({ courseData: courseData });
+        
+      } catch (error) {
+        console.error('Error getting Udemy course data:', error);
+        sendResponse({ error: error.message });
+      }
+    })();
+    
+    return true; // CRITICAL: Keep message channel open for async response
+  } else if (request.action === 'fetchUdemyTranscript') {
+    // Fetch transcript for quiz generation
+    fetchUdemyTranscript().then(transcript => {
+      console.log('🎯 Fetched Udemy transcript for quiz:', transcript ? transcript.substring(0, 100) + '...' : 'none');
+      sendResponse({ transcript: transcript });
+    }).catch(error => {
+      console.error('Error fetching Udemy transcript for quiz:', error);
+      sendResponse({ error: error.message });
+    });
+    return true; // Keep channel open for async response
   } else if (request.action === 'summarize' || request.action === 'summarizeWebpage') {
     handleSummarization(request, sendResponse);
     return true;
   }
   
-  return true;
+  return false; // Don't keep channel open for synchronous responses
 });
 
-async function handleSummarization(request, sendResponse) {
+// Helper functions for quiz manager integration
+function extractCourseIdFromUrl(url) {
   try {
-    const lessonTitle = getLessonTitle();
-    const courseTitle = getCourseTitle();
-    
-    const transcript = await fetchUdemyTranscript();
-    if (!transcript || transcript === 'No transcript available') {
-      throw new Error('No transcript available for this lecture');
-    }
-    
-    const prompt = `Course: ${courseTitle}\nLesson: ${lessonTitle}\n\nTranscript: ${transcript}\n\nSummarize this Udemy lecture transcript in a clear and concise manner. Include a title in parentheses () and language in brackets [].`;
-    
-    const summary = await makeApiRequest(prompt);
-    let [updatedSummary, originalLang] = getLanguage(summary);
-    let [finalSummary, topic] = parseText(updatedSummary);
-    
-    // Send topic to popup
-    chrome.runtime.sendMessage({ action: "updateTags", data: topic });
-    
-    // Display summary on Udemy page
-    displayUdemySummary(finalSummary, topic);
-    
-    sendResponse({ success: true, summary: finalSummary });
-    
+    // Extract course ID from Udemy URL if available
+    const match = url.match(/\/course\/([^\/]+)/);
+    return match ? match[1] : 'unknown';
   } catch (error) {
-    console.error('Udemy summarization error:', error);
-    displayUdemyError(error.message);
-    sendResponse({ error: error.message });
+    console.error('Error extracting course ID:', error);
+    return 'unknown';
   }
 }
 
-// Check if we're on Udemy
-function isUdemyPage() {
-  const isUdemy = window.location.hostname.includes('udemy.com');
-  console.log('Is Udemy page:', isUdemy, window.location.hostname);
-  return isUdemy;
-}
-
-// Check if we're on a lecture page
-function isLecturePage() {
-  const isLecture = window.location.pathname.includes('/learn/lecture/') || 
-         document.querySelector('[data-purpose="video-viewer"]') !== null ||
-         document.querySelector('.video-viewer--wrapper') !== null ||
-         document.querySelector('[data-purpose="curriculum-item-view"]') !== null;
-  console.log('Is lecture page:', isLecture, window.location.pathname);
-  return isLecture;
-}
-
-// Wait for Udemy lecture page to load
-function waitForUdemyLoad() {
-  return new Promise((resolve) => {
-    console.log('Waiting for Udemy to load...');
-    
-    const checkForElements = () => {
-      const videoViewer = document.querySelector('[data-purpose="video-viewer"]') || 
-                         document.querySelector('.video-viewer--wrapper') ||
-                         document.querySelector('.curriculum-item-view') ||
-                         document.querySelector('[data-purpose="curriculum-item-view"]');
-      
-      console.log('Found video viewer:', !!videoViewer);
-      return videoViewer;
-    };
-    
-    if (checkForElements()) {
-      console.log('Udemy elements found immediately');
-      resolve();
-    } else {
-      let attempts = 0;
-      const maxAttempts = 20;
-      
-      const observer = new MutationObserver((mutations, obs) => {
-        attempts++;
-        console.log(`Udemy load attempt ${attempts}/${maxAttempts}`);
-        
-        if (checkForElements() || attempts >= maxAttempts) {
-          obs.disconnect();
-          console.log('Udemy loading complete, found elements:', !!checkForElements());
-          resolve();
-        }
-      });
-      
-      observer.observe(document.body, { 
-        childList: true, 
-        subtree: true,
-        attributes: true 
-      });
-      
-      // Fallback timeout
-      setTimeout(() => {
-        observer.disconnect();
-        console.log('Udemy load timeout reached');
-        resolve();
-      }, 10000);
-    }
-  });
-}
-
-// Get lesson title
-function getLessonTitle() {
-  // Try to get the current lesson title from the active curriculum item
-  const currentLessonSelectors = [
-    // Look for the current/active lesson specifically
-    '.curriculum-item-link--is-current span[data-purpose="item-title"]',
-    '.curriculum-item-link--is-current .curriculum-item-link--title',
-    '[class*="curriculum-item-link--is-current"] [data-purpose="item-title"]',
-    '[class*="curriculum-item-link--is-current"] span',
-    '[class*="is-current"] [data-purpose="item-title"]',
-    
-    // Fallback to general curriculum item selectors
-    '[data-purpose="curriculum-item-title"] .curriculum-item-title',
-    '[data-purpose="lecture-title"]',
-    '.lecture-title',
-    '.curriculum-item-title-text',
-    '[data-purpose="item-title"]',
-    '.udlite-text-sm.udlite-text-gray-900',
-    '.section-content--lecture-view--title-text',
-    'h1[data-purpose="lecture-title"]',
-    '.curriculum-item-view--title--title'
+function getUdemyThumbnailForCourse() {
+  // Try to get actual course thumbnail from page
+  const thumbnailSelectors = [
+    '.course-landing-page__main-content img',
+    '[data-purpose="course-image"] img',
+    '.course-image img',
+    '.clp-lead__image img',
+    'meta[property="og:image"]'
   ];
   
-  for (const selector of currentLessonSelectors) {
+  for (const selector of thumbnailSelectors) {
     const element = document.querySelector(selector);
-    if (element && element.textContent.trim()) {
-      console.log(`Found lesson title with selector: ${selector}`);
-      return element.textContent.trim();
-    }
-  }
-  
-  // Fallback to generic title
-  const fallbackTitle = document.querySelector('h1')?.textContent?.trim() || 'Udemy Lecture';
-  console.log('Using fallback lesson title:', fallbackTitle);
-  return fallbackTitle;
-}
-
-// Get module/section name
-function getModuleName() {
-  // First, try to find the current lesson and then traverse up to find its module
-  const currentLessonElement = document.querySelector('.curriculum-item-link--is-current, [class*="curriculum-item-link--is-current"], [class*="is-current"]');
-  
-  if (currentLessonElement) {
-    console.log('Found current lesson element, looking for parent module');
-    
-    // Traverse up the DOM to find the accordion panel or section container
-    let parent = currentLessonElement.parentElement;
-    let attempts = 0;
-    const maxAttempts = 10;
-    
-    while (parent && attempts < maxAttempts) {
-      attempts++;
-      
-      // Look for accordion panel module
-      if (parent.classList.contains('accordion-panel-module--outer-panel-toggler') || 
-          parent.querySelector('[class*="accordion-panel-module--outer-panel-toggler"]')) {
-        
-        const moduleSelectors = [
-          // Look within this accordion panel for the module title
-          '[class*="accordion-panel-module--outer-panel-toggler"] button span',
-          '[class*="accordion-panel-module--outer-panel-toggler"] [data-purpose="section-title"]',
-          '[class*="accordion-panel-module--outer-panel-toggler"] .udlite-heading-md',
-          '[class*="accordion-panel-module--outer-panel-toggler"] .section--section-title--title-text',
-          // Look in parent for section title
-          '.section--section-title--title-text',
-          '[data-purpose="curriculum-section-title"]',
-          '[data-purpose="section-title"]'
-        ];
-        
-        for (const selector of moduleSelectors) {
-          const moduleElement = parent.querySelector(selector);
-          if (moduleElement && moduleElement.textContent.trim()) {
-            console.log(`Found module name with selector: ${selector}`);
-            return moduleElement.textContent.trim();
-          }
-        }
-      }
-      
-      // Look for other section containers
-      if (parent.classList.contains('curriculum-section') || 
-          parent.classList.contains('section') ||
-          parent.querySelector('[data-purpose="curriculum-section-title"]')) {
-        
-        const sectionSelectors = [
-          '[data-purpose="curriculum-section-title"]',
-          '.section--section-title--title-text',
-          '.curriculum-section-title',
-          '.section-title',
-          '[data-purpose="section-title"]',
-          '.udlite-heading-md'
-        ];
-        
-        for (const selector of sectionSelectors) {
-          const sectionElement = parent.querySelector(selector);
-          if (sectionElement && sectionElement.textContent.trim()) {
-            console.log(`Found section name with selector: ${selector} in parent`);
-            return sectionElement.textContent.trim();
-          }
-        }
-      }
-      
-      parent = parent.parentElement;
-    }
-  }
-  
-  // Fallback to general module selectors
-  const generalModuleSelectors = [
-    // Accordion panel modules
-    '[class*="accordion-panel-module--outer-panel-toggler"] button span',
-    '[class*="accordion-panel-module--outer-panel-toggler"] [data-purpose="section-title"]',
-    '.accordion-panel-module--outer-panel-toggler .udlite-heading-md',
-    
-    // Standard section selectors
-    '[data-purpose="curriculum-section-title"].section--section-title--title-text',
-    '.section--section-title--title-text',
-    '.curriculum-section-title',
-    '.section-title',
-    '[data-purpose="section-title"]',
-    '.curriculum-section--title',
-    '.section-content--section-title',
-    '.udlite-heading-md'
-  ];
-  
-  for (const selector of generalModuleSelectors) {
-    const element = document.querySelector(selector);
-    if (element && element.textContent.trim()) {
-      console.log(`Found module name with general selector: ${selector}`);
-      return element.textContent.trim();
-    }
-  }
-  
-  // Try to find the active/current section in curriculum sidebar
-  const activeSectionSelectors = [
-    '.curriculum-item-link--is-current .curriculum-item-link--title',
-    '.curriculum-section--expanded .section--section-title--title-text',
-    '.active-lecture-section .section-title',
-    '[class*="is-current"] .section-title'
-  ];
-  
-  for (const selector of activeSectionSelectors) {
-    const element = document.querySelector(selector);
-    if (element && element.textContent.trim()) {
-      console.log(`Found active section with selector: ${selector}`);
-      return element.textContent.trim();
-    }
-  }
-  
-  console.log('Using fallback module name');
-  return 'Course Module';
-}
-
-// Get course title
-function getCourseTitle() {
-  // First try to get the actual course name from the header above the video
-  const headerSelectors = [
-    '.header--header-text--zBvgT',
-    '[class*="header--header-text"]',
-    '.header-text',
-    '.course-header-text'
-  ];
-  
-  for (const selector of headerSelectors) {
-    const element = document.querySelector(selector);
-    if (element && element.textContent.trim()) {
-      console.log(`Found course title with header selector: ${selector}`);
-      return element.textContent.trim();
-    }
-  }
-  
-  // Fallback to other course title selectors
-  const courseTitleSelectors = [
-    '[data-purpose="course-title"]',
-    '.course-title',
-    '[data-purpose="breadcrumb"] a:last-child',
-    '.breadcrumb-item:last-child a',
-    '.course-header-title',
-    '.clp-lead__title h1',
-    'h1.clp-lead__title',
-    '.course-landing-page__main-content h1'
-  ];
-  
-  for (const selector of courseTitleSelectors) {
-    const element = document.querySelector(selector);
-    if (element && element.textContent.trim()) {
-      console.log(`Found course title with fallback selector: ${selector}`);
-      return element.textContent.trim();
-    }
-  }
-  
-  // Try to get from breadcrumb navigation
-  const breadcrumbLinks = document.querySelectorAll('[data-purpose="breadcrumb"] a, .breadcrumb a');
-  if (breadcrumbLinks.length > 0) {
-    const lastBreadcrumb = breadcrumbLinks[breadcrumbLinks.length - 1];
-    if (lastBreadcrumb && lastBreadcrumb.textContent.trim()) {
-      console.log('Found course title from breadcrumb');
-      return lastBreadcrumb.textContent.trim();
-    }
-  }
-  
-  console.log('Using fallback course title');
-  return 'Udemy Course';
-}
-
-// Get course duration/length
-function getCourseDuration() {
-  const durationSelectors = [
-    '[data-purpose="course-content-length"]',
-    '.course-content-length',
-    '.total-time',
-    '.course-duration',
-    '.course-landing-page__course-content-length',
-    '.clp-component-render--course-content-length',
-    '.course-info-item[data-purpose="course-content-length"]',
-    '[data-testid="course-content-length"]'
-  ];
-  
-  for (const selector of durationSelectors) {
-    const element = document.querySelector(selector);
-    if (element && element.textContent.trim()) {
-      const durationText = element.textContent.trim();
-      // Extract duration patterns like "12.5 hours", "3h 45m", etc.
-      const durationMatch = durationText.match(/(\d+(?:\.\d+)?)\s*(hours?|hrs?|h)|(\d+)\s*(minutes?|mins?|m)/i);
-      if (durationMatch) {
-        return durationText;
+    if (element) {
+      const src = element.tagName === 'META' ? element.content : element.src;
+      if (src && src.startsWith('http')) {
+        return src;
       }
     }
   }
   
-  // Try to find course info items that contain "total" text
-  const courseInfoItems = document.querySelectorAll('[data-purpose="course-info"] .course-info-item, .course-info-item');
-  for (const item of courseInfoItems) {
-    const text = item.textContent.trim().toLowerCase();
-    if (text.includes('total') || text.includes('hour') || text.includes('duration')) {
-      const durationMatch = text.match(/(\d+(?:\.\d+)?)\s*(hours?|hrs?|h)|(\d+)\s*(minutes?|mins?|m)/i);
-      if (durationMatch) {
-        return item.textContent.trim();
-      }
-    }
-  }
-  
-  // Try to calculate from curriculum items
-  const lectureItems = document.querySelectorAll('[data-purpose="curriculum-item-duration"], .curriculum-item-duration');
-  if (lectureItems.length > 0) {
-    let totalMinutes = 0;
-    lectureItems.forEach(item => {
-      const duration = item.textContent.trim();
-      const minuteMatch = duration.match(/(\d+):(\d+)/); // Format like "12:34"
-      if (minuteMatch) {
-        totalMinutes += parseInt(minuteMatch[1]) * 60 + parseInt(minuteMatch[2]);
-      }
-    });
-    
-    if (totalMinutes > 0) {
-      const hours = Math.floor(totalMinutes / 60);
-      const minutes = totalMinutes % 60;
-      return `${hours}h ${minutes}m total`;
-    }
-  }
-  
-  return 'Duration not available';
+  // Fallback to generic Udemy thumbnail
+  return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQwIiBoZWlnaHQ9IjEzNSIgdmlld0JveD0iMCAwIDI0MCAxMzUiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyNDAiIGhlaWdodD0iMTM1IiBmaWxsPSIjQTQzNUYwIi8+Cjx0ZXh0IHg9IjEyMCIgeT0iNzAiIGZvcnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5VZGVteSBDb3Vyc2U8L3RleHQ+Cjwvc3ZnPg==';
 }
 
 // Improved Udemy transcript fetching with retry logic and better error handling
@@ -778,6 +547,7 @@ function createUdemySummarizeButton() {
     cursor: move;
     user-select: none;
     max-width: 180px;
+    min-height: 26px;
   `;
   
   // Add drag functionality
@@ -829,7 +599,7 @@ function createUdemySummarizeButton() {
     right: 4px;
     background: none;
     border: none;
-    font-size: 16px;
+    font-size: 20px;
     cursor: pointer;
     color: #6a6f73;
     width: 20px;
@@ -1053,6 +823,19 @@ async function handleUdemySummarize() {
     
     // Display summary
     displayUdemySummary(finalSummary, topic);
+
+    // NEW: Open side panel (live summary) similar to YouTube implementation
+    try {
+      const videoData = buildUdemyVideoDataObject({
+        transcript: transcriptData,
+        lessonTitle,
+        courseTitle,
+        url: window.location.href
+      });
+      chrome.runtime.sendMessage({ action: 'openLiveSummary', videoData });
+    } catch (e) {
+      console.log('Udemy side panel open failed (non-fatal):', e.message);
+    }
     
   } catch (error) {
     console.error('Error summarizing:', error);
@@ -1261,6 +1044,441 @@ function displayUdemyError(message) {
   // ...existing code... (similar to YouTube error display but with Udemy styling)
 }
 
+// Handle summarization for Udemy
+async function handleSummarization(request, sendResponse) {
+  try {
+    const lessonTitle = getLessonTitle();
+    const courseTitle = getCourseTitle();
+    
+    const transcript = await fetchUdemyTranscript();
+    if (!transcript || transcript === 'No transcript available') {
+      throw new Error('No transcript available for this lecture');
+    }
+    
+    const prompt = `Course: ${courseTitle}\nLesson: ${lessonTitle}\n\nTranscript: ${transcript}\n\nSummarize this Udemy lecture transcript in a clear and concise manner. Include a title in parentheses () and language in brackets [].`;
+    
+    const summary = await makeApiRequest(prompt);
+    let [updatedSummary, originalLang] = getLanguage(summary);
+    let [finalSummary, topic] = parseText(updatedSummary);
+    
+    // Send topic to popup
+    chrome.runtime.sendMessage({ action: "updateTags", data: topic });
+    
+    // Display summary on Udemy page
+    displayUdemySummary(finalSummary, topic);
+    
+    sendResponse({ success: true, summary: finalSummary });
+    
+  } catch (error) {
+    console.error('Udemy summarization error:', error);
+    displayUdemyError(error.message);
+    sendResponse({ error: error.message });
+  }
+}
+
+// Check if we're on Udemy
+function isUdemyPage() {
+  const isUdemy = window.location.hostname.includes('udemy.com');
+  console.log('Is Udemy page:', isUdemy, window.location.hostname);
+  return isUdemy;
+}
+
+// Check if we're on a lecture page
+function isLecturePage() {
+  const isLecture = window.location.pathname.includes('/learn/lecture/') || 
+         document.querySelector('[data-purpose="video-viewer"]') !== null ||
+         document.querySelector('.video-viewer--wrapper') !== null ||
+         document.querySelector('[data-purpose="curriculum-item-view"]') !== null;
+  console.log('Is lecture page:', isLecture, window.location.pathname);
+  return isLecture;
+}
+
+// Wait for Udemy lecture page to load
+function waitForUdemyLoad() {
+  return new Promise((resolve) => {
+    console.log('Waiting for Udemy to load...');
+    
+    const checkForElements = () => {
+      const videoViewer = document.querySelector('[data-purpose="video-viewer"]') || 
+                         document.querySelector('.video-viewer--wrapper') ||
+                         document.querySelector('.curriculum-item-view') ||
+                         document.querySelector('[data-purpose="curriculum-item-view"]');
+      
+      console.log('Found video viewer:', !!videoViewer);
+      return videoViewer;
+    };
+    
+    if (checkForElements()) {
+      console.log('Udemy elements found immediately');
+      resolve();
+    } else {
+      let attempts = 0;
+      const maxAttempts = 20;
+      
+      const observer = new MutationObserver((mutations, obs) => {
+        attempts++;
+        console.log(`Udemy load attempt ${attempts}/${maxAttempts}`);
+        
+        if (checkForElements() || attempts >= maxAttempts) {
+          obs.disconnect();
+          console.log('Udemy loading complete, found elements:', !!checkForElements());
+          resolve();
+        }
+      });
+      
+      observer.observe(document.body, { 
+        childList: true, 
+        subtree: true,
+        attributes: true 
+      });
+      
+      // Fallback timeout
+      setTimeout(() => {
+        observer.disconnect();
+        console.log('Udemy load timeout reached');
+        resolve();
+      }, 10000);
+    }
+  });
+}
+
+// Get lesson title
+function getLessonTitle() {
+  // Try to get the current lesson title from the active curriculum item
+  const currentLessonSelectors = [
+    // Look for the current/active lesson specifically
+    '.curriculum-item-link--is-current span[data-purpose="item-title"]',
+    '.curriculum-item-link--is-current .curriculum-item-link--title',
+    '[class*="curriculum-item-link--is-current"] [data-purpose="item-title"]',
+    '[class*="curriculum-item-link--is-current"] span',
+    '[class*="is-current"] [data-purpose="item-title"]',
+    
+    // Fallback to general curriculum item selectors
+    '[data-purpose="curriculum-item-title"] .curriculum-item-title',
+    '[data-purpose="lecture-title"]',
+    '.lecture-title',
+    '.curriculum-item-title-text',
+    '[data-purpose="item-title"]',
+    '.udlite-text-sm.udlite-text-gray-900',
+    '.section-content--lecture-view--title-text',
+    'h1[data-purpose="lecture-title"]',
+    '.curriculum-item-view--title--title'
+  ];
+  
+  for (const selector of currentLessonSelectors) {
+    const element = document.querySelector(selector);
+    if (element && element.textContent.trim()) {
+      console.log(`Found lesson title with selector: ${selector}`);
+      return element.textContent.trim();
+    }
+  }
+  
+  // Fallback to generic title
+  const fallbackTitle = document.querySelector('h1')?.textContent?.trim() || 'Udemy Lecture';
+  console.log('Using fallback lesson title:', fallbackTitle);
+  return fallbackTitle;
+}
+
+// Get module/section name
+function getModuleName() {
+  // First, try to find the current lesson and then traverse up to find its module
+  const currentLessonElement = document.querySelector('.curriculum-item-link--is-current, [class*="curriculum-item-link--is-current"], [class*="is-current"]');
+  
+  if (currentLessonElement) {
+    console.log('Found current lesson element, looking for parent module');
+    
+    // Traverse up the DOM to find the accordion panel or section container
+    let parent = currentLessonElement.parentElement;
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    while (parent && attempts < maxAttempts) {
+      attempts++;
+      
+      // Look for accordion panel module
+      if (parent.classList.contains('accordion-panel-module--outer-panel-toggler') || 
+          parent.querySelector('[class*="accordion-panel-module--outer-panel-toggler"]')) {
+        
+        const moduleSelectors = [
+          // Look within this accordion panel for the module title
+          '[class*="accordion-panel-module--outer-panel-toggler"] button span',
+          '[class*="accordion-panel-module--outer-panel-toggler"] [data-purpose="section-title"]',
+          '[class*="accordion-panel-module--outer-panel-toggler"] .udlite-heading-md',
+          '[class*="accordion-panel-module--outer-panel-toggler"] .section--section-title--title-text',
+          // Look in parent for section title
+          '.section--section-title--title-text',
+          '[data-purpose="curriculum-section-title"]',
+          '[data-purpose="section-title"]'
+        ];
+        
+        for (const selector of moduleSelectors) {
+          const moduleElement = parent.querySelector(selector);
+          if (moduleElement && moduleElement.textContent.trim()) {
+            console.log(`Found module name with selector: ${selector}`);
+            return moduleElement.textContent.trim();
+          }
+        }
+      }
+      
+      // Look for other section containers
+      if (parent.classList.contains('curriculum-section') || 
+          parent.classList.contains('section') ||
+          parent.querySelector('[data-purpose="curriculum-section-title"]')) {
+        
+        const sectionSelectors = [
+          '[data-purpose="curriculum-section-title"]',
+          '.section--section-title--title-text',
+          '.curriculum-section-title',
+          '.section-title',
+          '[data-purpose="section-title"]',
+          '.udlite-heading-md'
+        ];
+        
+        for (const selector of sectionSelectors) {
+          const sectionElement = parent.querySelector(selector);
+          if (sectionElement && sectionElement.textContent.trim()) {
+            console.log(`Found section name with selector: ${selector} in parent`);
+            return sectionElement.textContent.trim();
+          }
+        }
+      }
+      
+      parent = parent.parentElement;
+    }
+  }
+  
+  // Fallback to general module selectors
+  const generalModuleSelectors = [
+    // Accordion panel modules
+    '[class*="accordion-panel-module--outer-panel-toggler"] button span',
+    '[class*="accordion-panel-module--outer-panel-toggler"] [data-purpose="section-title"]',
+    '.accordion-panel-module--outer-panel-toggler .udlite-heading-md',
+    
+    // Standard section selectors
+    '[data-purpose="curriculum-section-title"].section--section-title--title-text',
+    '.section--section-title--title-text',
+    '.curriculum-section-title',
+    '.section-title',
+    '[data-purpose="section-title"]',
+    '.curriculum-section--title',
+    '.section-content--section-title',
+    '.udlite-heading-md'
+  ];
+  
+  for (const selector of generalModuleSelectors) {
+    const element = document.querySelector(selector);
+    if (element && element.textContent.trim()) {
+      console.log(`Found module name with general selector: ${selector}`);
+      return element.textContent.trim();
+    }
+  }
+  
+  // Try to find the active/current section in curriculum sidebar
+  const activeSectionSelectors = [
+    '.curriculum-item-link--is-current .curriculum-item-link--title',
+    '.curriculum-section--expanded .section--section-title--title-text',
+    '.active-lecture-section .section-title',
+    '[class*="is-current"] .section-title'
+  ];
+  
+  for (const selector of activeSectionSelectors) {
+    const element = document.querySelector(selector);
+    if (element && element.textContent.trim()) {
+      console.log(`Found active section with selector: ${selector}`);
+      return element.textContent.trim();
+    }
+  }
+  
+  console.log('Using fallback module name');
+  return 'Course Module';
+}
+
+// Get course title
+function getCourseTitle() {
+  // Return cached if still same course slug
+  const slug = extractCourseIdFromUrl(window.location.href); // reuse existing extractor (slug)
+  if (cachedCourseTitle && cachedCourseTitle.slug === slug) {
+    return cachedCourseTitle.title;
+  }
+
+  // First try to get the actual course name from the header above the video
+  const headerSelectors = [
+    '.header--header-text--zBvgT',
+    '[class*="header--header-text"]',
+    '.header-text',
+  '.course-header-text',
+  // NEW explicit Udemy course title class provided in requirements
+  '.ud-text-xl.course-lead--course-title--neX4I'
+  ];
+  
+  for (const selector of headerSelectors) {
+    const element = document.querySelector(selector);
+    if (element && element.textContent.trim()) {
+      const text = element.textContent.trim();
+      if (!looksLikeLessonTitle(text)) {
+        console.log(`Found course title with header selector: ${selector}`);
+        cacheCourseTitle(slug, text);
+        return text;
+      }
+    }
+  }
+  
+  // Fallback to other course title selectors
+  const courseTitleSelectors = [
+    '[data-purpose="course-title"]',
+    '.course-title',
+    '[data-purpose="breadcrumb"] a:last-child',
+    '.breadcrumb-item:last-child a',
+    '.course-header-title',
+    '.clp-lead__title h1',
+    'h1.clp-lead__title',
+  '.course-landing-page__main-content h1',
+  '.ud-text-xl.course-lead--course-title--neX4I'
+  ];
+  
+  for (const selector of courseTitleSelectors) {
+    const element = document.querySelector(selector);
+    if (element && element.textContent.trim()) {
+      const text = element.textContent.trim();
+      if (!looksLikeLessonTitle(text)) {
+        console.log(`Found course title with fallback selector: ${selector}`);
+        cacheCourseTitle(slug, text);
+        return text;
+      }
+    }
+  }
+  
+  // Try to get from breadcrumb navigation
+  const breadcrumbLinks = document.querySelectorAll('[data-purpose="breadcrumb"] a, .breadcrumb a');
+  if (breadcrumbLinks.length > 0) {
+    const lastBreadcrumb = breadcrumbLinks[breadcrumbLinks.length - 1];
+    if (lastBreadcrumb && lastBreadcrumb.textContent.trim()) {
+      console.log('Found course title from breadcrumb');
+      const text = lastBreadcrumb.textContent.trim();
+      if (!looksLikeLessonTitle(text)) {
+        cacheCourseTitle(slug, text);
+        return text;
+      }
+    }
+  }
+
+  // FINAL ATTEMPT: If we accidentally captured lesson title earlier, try dedicated class again
+  try {
+    const lessonTitle = getLessonTitle();
+    const explicit = document.querySelector('.ud-text-xl.course-lead--course-title--neX4I');
+    if (explicit && explicit.textContent.trim() && explicit.textContent.trim() !== lessonTitle) {
+      console.log('Using explicit Udemy course title class after fallback');
+      const text = explicit.textContent.trim();
+      cacheCourseTitle(slug, text);
+      return text;
+    }
+  } catch (e) { /* ignore */ }
+
+  // EXTRA FALLBACKS: scan anchors linking to /course/<slug>
+  const anchorCandidates = Array.from(document.querySelectorAll('a[href*="/course/"]'))
+    .filter(a => a.href.includes('/course/') && !a.href.includes('/learn/') && a.textContent.trim().length > 5)
+    .map(a => a.textContent.trim())
+    .filter(t => !looksLikeLessonTitle(t));
+  if (anchorCandidates.length > 0) {
+    // choose longest meaningful text
+    anchorCandidates.sort((a,b)=>b.length - a.length);
+    const text = anchorCandidates[0];
+    cacheCourseTitle(slug, text);
+    console.log('Derived course title from anchor candidate');
+    return text;
+  }
+
+  // FINAL: build from slug
+  if (slug && slug !== 'unknown') {
+    const text = slug
+      .replace(/[-_]+/g, ' ')
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    cacheCourseTitle(slug, text);
+    console.log('Constructed course title from slug');
+    return text;
+  }
+  
+  console.log('Using fallback course title');
+  return 'Udemy Course';
+}
+
+// Helper: determine if string likely equals current lesson title
+function looksLikeLessonTitle(text) {
+  const lesson = getLessonTitle();
+  if (!text || !lesson) return false;
+  const t = text.trim();
+  const l = lesson.trim();
+  if (t === l) return true; // exact
+  // if lesson fully contained and shorter, treat as lesson
+  if (l.length >= 8 && t.toLowerCase().includes(l.toLowerCase()) && t.split(' ').length <= l.split(' ').length + 2) return true;
+  return false;
+}
+
+function cacheCourseTitle(slug, title) {
+  cachedCourseTitle = { slug, title };
+}
+
+// Get course duration/length
+function getCourseDuration() {
+  const durationSelectors = [
+    '[data-purpose="course-content-length"]',
+    '.course-content-length',
+    '.total-time',
+    '.course-duration',
+    '.course-landing-page__course-content-length',
+    '.clp-component-render--course-content-length',
+    '.course-info-item[data-purpose="course-content-length"]',
+    '[data-testid="course-content-length"]'
+  ];
+  
+  for (const selector of durationSelectors) {
+    const element = document.querySelector(selector);
+    if (element && element.textContent.trim()) {
+      const durationText = element.textContent.trim();
+      // Extract duration patterns like "12.5 hours", "3h 45m", etc.
+      const durationMatch = durationText.match(/(\d+(?:\.\d+)?)\s*(hours?|hrs?|h)|(\d+)\s*(minutes?|mins?|m)/i);
+      if (durationMatch) {
+        return durationText;
+      }
+    }
+  }
+  
+  // Try to find course info items that contain "total" text
+  const courseInfoItems = document.querySelectorAll('[data-purpose="course-info"] .course-info-item, .course-info-item');
+  for (const item of courseInfoItems) {
+    const text = item.textContent.trim().toLowerCase();
+    if (text.includes('total') || text.includes('hour') || text.includes('duration')) {
+      const durationMatch = text.match(/(\d+(?:\.\d+)?)\s*(hours?|hrs?|h)|(\d+)\s*(minutes?|mins?|m)/i);
+      if (durationMatch) {
+        return item.textContent.trim();
+      }
+    }
+  }
+  
+  // Try to calculate from curriculum items
+  const lectureItems = document.querySelectorAll('[data-purpose="curriculum-item-duration"], .curriculum-item-duration');
+  if (lectureItems.length > 0) {
+    let totalMinutes = 0;
+    lectureItems.forEach(item => {
+      const duration = item.textContent.trim();
+      const minuteMatch = duration.match(/(\d+):(\d+)/); // Format like "12:34"
+      if (minuteMatch) {
+        totalMinutes += parseInt(minuteMatch[1]) * 60 + parseInt(minuteMatch[2]);
+      }
+    });
+    
+    if (totalMinutes > 0) {
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return `${hours}h ${minutes}m total`;
+    }
+  }
+  
+  return 'Duration not available';
+}
+
 // Initialize Udemy integration
 async function initUdemyIntegration() {
   console.log('Initializing Udemy integration...');
@@ -1289,6 +1507,14 @@ async function initUdemyIntegration() {
     if (location.href !== currentUrl) {
       currentUrl = location.href;
       console.log('Udemy navigation detected to:', currentUrl);
+      // Reset course title cache if course slug changed
+      try {
+        const newSlug = extractCourseIdFromUrl(currentUrl);
+        if (cachedCourseTitle && cachedCourseTitle.slug !== newSlug) {
+          cachedCourseTitle = null;
+          console.log('Course slug changed, reset cached course title');
+        }
+      } catch(e) { /* ignore */ }
       
       if (isLecturePage()) {
         console.log('Navigated to lecture page, creating buttons...');
