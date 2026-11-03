@@ -1,6 +1,12 @@
 // Enhanced background script with improved side panel communication
 const temporaryData = {};
 
+// The Gemini key is supplied by the user in the extension settings and read from storage.
+async function getGeminiApiKey() {
+  const { googleApiKey } = await chrome.storage.local.get(['googleApiKey']);
+  return googleApiKey || null;
+}
+
 // Global utility function for safe tab messaging with retry logic
 const safeSendMessage = async (tabId, message, options = {}) => {
   const { maxRetries = 3, timeout = 3000, injectScripts = false } = options;
@@ -115,25 +121,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } catch (e) {
       console.log(e);
     }
+  } else if (request.action === 'openSidePanel') {
+    // Called synchronously from the content script click handler while user gesture is still alive.
+    chrome.sidePanel.open({ tabId: sender.tab.id }).catch(err => {
+      console.warn('openSidePanel: could not open side panel:', err);
+    });
+    sendResponse({ status: 'opening' });
+
   } else if (request.action === "openLiveSummary") {
-    // Store video data and open side panel for Live Summary
-    console.log('Opening Live Summary side panel with video data:', request.videoData);
-    
-    // Store video data temporarily with special flag
+    // Store video data and push it to the already-open side panel.
+    console.log('openLiveSummary received:', request.videoData?.title);
+
     temporaryData['videoData'] = request.videoData;
     temporaryData['shouldOpenLiveTab'] = true;
-    
-    // Send response immediately
+
     sendResponse({ status: 'received' });
-    
-    // Open the side panel - it will auto-detect video data when ready
-    chrome.sidePanel.open({ tabId: sender.tab.id }).then(() => {
-      console.log('Side panel opened for Live Summary - panel will auto-detect video data');
-    }).catch((error) => {
-      console.error('Failed to open side panel:', error);
-      // If side panel is already open, it will still auto-detect the video data
-      console.log('Side panel may already be open - video data stored for pickup');
-    });
+
+    // Push data directly to the side panel (which openSidePanel already opened).
+    // If the panel isn’t open yet for some reason, also try sidePanel.open as fallback.
+    chrome.runtime.sendMessage({ action: 'openLiveSummary', videoData: request.videoData })
+      .catch(() => {
+        // Panel not open — try opening it now (may fail without user gesture, but worth trying)
+        chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => {});
+      });
   } else if (request.action === "storeVideoData") {
     // Alternative method to store video data
     console.log('Storing video data for popup:', request.videoData);
@@ -149,17 +159,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ status: 'saved_video_stored' });
   } else if (request.action === "getVideoData") {
     // Return stored video data and clear the flag
-    console.log('Popup requesting video data. Current data:', temporaryData['videoData']);
+    console.log('Popup requesting video data. Current data:', temporaryData['shouldOpenLiveTab']);
     const videoData = temporaryData['videoData'] || null;
     const shouldOpenLiveTab = temporaryData['shouldOpenLiveTab'] || false;
     const isFromSavedVideo = temporaryData['isFromSavedVideo'] || false;
     
     // Clear the flags after first request to prevent multiple auto-opens
-    if (shouldOpenLiveTab) {
-      temporaryData['shouldOpenLiveTab'] = false;
-      temporaryData['isFromSavedVideo'] = false;
-      console.log('Returning video data with shouldOpenLiveTab=true, isFromSavedVideo=', isFromSavedVideo);
-    }
+    // if (shouldOpenLiveTab) {
+    //   console.log('Clear flags');
+    //   temporaryData['shouldOpenLiveTab'] = false;
+    //   temporaryData['isFromSavedVideo'] = false;
+    //   console.log('Returning video data with shouldOpenLiveTab=true, isFromSavedVideo=', isFromSavedVideo);
+    // }
     
     sendResponse({ videoData, shouldOpenLiveTab, isFromSavedVideo });
   } else if (request.action === "getCurrentVideoInfo") {
@@ -180,16 +191,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return;
         }
         
-        if (!tab.url || !tab.url.includes('youtube.com')) {
-          console.log('Tab is not a YouTube page:', tab.url);
-          sendResponse({ videoData: null, error: 'Not a YouTube page' });
+        if (!tab.url || (!tab.url.includes('youtube.com') && !tab.url.includes('udemy.com'))) {
+          console.log('Tab is not a YouTube or Udemy page:', tab.url);
+          sendResponse({ videoData: null, error: 'Not a YouTube or Udemy page' });
           return;
         }
         
         try {
-          const response = await safeSendMessage(targetTabId, { action: 'getCurrentVideoData' });
-          console.log('Got video data from specified tab:', response?.videoData?.title);
-          sendResponse(response);
+          // Choose the appropriate action based on the platform
+          const action = tab.url.includes('udemy.com') ? 'getUdemyVideoData' : 'getCurrentVideoData';
+          const response = await safeSendMessage(targetTabId, { action: action });
+          console.log(`Got ${tab.url.includes('udemy.com') ? 'Udemy course' : 'YouTube video'} data from specified tab:`, response?.videoData?.title || response?.courseData?.title);
+          
+          // Normalize response format for Udemy
+          if (action === 'getUdemyVideoData' && response?.courseData) {
+            sendResponse({ videoData: response.courseData });
+          } else {
+            sendResponse(response);
+          }
         } catch (error) {
           console.log('All attempts failed for specified tab:', error.message);
           sendResponse({ videoData: null, error: error.message });
@@ -270,6 +289,77 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true; // Keep channel open for async response
     } else {
       sendResponse({ transcript: null, error: 'No active tab' });
+    }
+  } else if (request.action === "geminiRequest") {
+    (async () => {
+      try {
+        const modelMatch = request.endpoint.match(/models\/([^:?/]+)/);
+        const model = modelMatch ? modelMatch[1] : 'gemini-3.5-flash';
+        const geminiApiKey = await getGeminiApiKey();
+        if (!geminiApiKey) {
+          sendResponse({ ok: false, status: 401, error: 'Google API key not configured. Add it in the extension settings.' });
+          return;
+        }
+        const url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:streamGenerateContent?key=${geminiApiKey}`;
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request.body)
+        });
+
+        const text = await response.text();
+
+        if (!response.ok) {
+          let errMsg;
+          try { errMsg = JSON.parse(text)?.error?.message; } catch (_) {}
+          sendResponse({ ok: false, status: response.status, error: errMsg || text.substring(0, 300) || `HTTP ${response.status}` });
+          return;
+        }
+
+        // streamGenerateContent returns a JSON array of chunks — concatenate all text parts
+        let chunks = [];
+        try { chunks = JSON.parse(text); } catch (_) {}
+        if (!Array.isArray(chunks)) chunks = [chunks];
+
+        let fullText = '';
+        for (const chunk of chunks) {
+          for (const part of chunk?.candidates?.[0]?.content?.parts || []) {
+            if (part.text) fullText += part.text;
+          }
+        }
+
+        sendResponse({ ok: true, data: { candidates: [{ content: { role: 'model', parts: [{ text: fullText }] }, finishReason: 'STOP' }] } });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
+    return true;
+
+  } else if (request.action === "fetchUdemyTranscriptForQuiz") {
+    // Handle Udemy transcript fetching for quiz generation
+    console.log('Quiz manager requesting Udemy transcript for tab:', request.tabId);
+    
+    const targetTabId = request.tabId;
+    
+    if (targetTabId) {
+      (async () => {
+        try {
+          const response = await safeSendMessage(targetTabId, { 
+            action: 'fetchUdemyTranscript'
+          }, { injectScripts: true });
+          
+          console.log('Successfully fetched Udemy transcript for quiz');
+          sendResponse(response);
+        } catch (error) {
+          console.log('Could not fetch Udemy transcript for quiz:', error.message);
+          sendResponse({ transcript: null, error: error.message });
+        }
+      })();
+      
+      return true; // Keep channel open for async response
+    } else {
+      sendResponse({ transcript: null, error: 'No tab ID provided' });
     }
   }
   return true; // Keep the message channel open

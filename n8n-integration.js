@@ -17,11 +17,10 @@ class N8NIntegration {
 
   // Send data to N8N webhook
   static async sendToN8N(data) {
-    // const endpoint = await this.getN8NEndpoint();
-    const endpoint = 'https://example.invalid/webhook/REDACTED';
-    
+    const endpoint = await this.getN8NEndpoint();
+
     if (!endpoint) {
-      throw new Error('N8N endpoint not configured. Please set your N8N webhook URL in the extension settings.');
+      throw new Error('Notion export is optional and not configured. Store your n8n webhook URL under "n8nEndpoint" in chrome.storage.local to enable it.');
     }
 
     try {
