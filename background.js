@@ -1,4 +1,6 @@
 // Enhanced background script with improved side panel communication
+importScripts('library-store.js');
+
 const temporaryData = {};
 
 // The Gemini key is supplied by the user in the extension settings and read from storage.
@@ -111,6 +113,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Library requests carry whole transcripts, so answer them before the debug logging below.
+  if (libraryStore.handleMessage(request, sendResponse)) return true;
+
   console.log('Background script received message:', request.action, request);
   
   if (request.action === "updateTags") {

@@ -21,10 +21,15 @@ function loadScript(src) {
     // Load API service first (this is critical for other scripts)
     console.log('📦 Loading API service...');
     await loadScript('api-service.js');
+
+    // Storage layer and search (IndexedDB), needed by every manager below
+    await loadScript('library-store.js');
+    await loadScript('library-search.js');
     
     // Load core managers next (these create the classes)
     console.log('📦 Loading core managers...');
     await loadScript('summaries-manager.js');
+    await loadScript('library-search-ui.js');
     await loadScript('live-chat-manager.js');
     await loadScript('settings-manager.js');
     await loadScript('quiz-manager.js');

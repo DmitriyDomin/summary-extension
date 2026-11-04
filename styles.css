@@ -2543,3 +2543,118 @@ input:checked + .slider:before {
 .quiz-container::-webkit-scrollbar-thumb:hover {
   background: var(--accent-secondary);
 }
+
+/* Library search (Saved page) */
+.library-search-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-md);
+}
+
+.library-search-results {
+  display: grid;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.library-search-results[hidden],
+.summaries-grid[hidden] {
+  display: none;
+}
+
+.library-search-note,
+.library-search-empty {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-xl);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.library-result {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.library-result-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.library-result-badge {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-white);
+  background: var(--accent-primary);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.library-result-badge.summary {
+  background: var(--accent-secondary);
+}
+
+.library-result-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-result-snippet {
+  margin: var(--space-xs) 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.library-result-snippet mark {
+  background: rgba(245, 158, 11, 0.25);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.library-result-meta,
+.library-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.library-result-chip {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.library-result-actions {
+  margin-top: var(--space-sm);
+}
+
+.library-result-actions a,
+.library-result-actions button {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.library-result-actions a:hover,
+.library-result-actions button:hover {
+  text-decoration: underline;
+}

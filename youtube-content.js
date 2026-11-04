@@ -650,17 +650,14 @@ async function handleRegenerateSummary() {
   if (!videoId) return;
 
   try {
-    const sessionKey = `liveChatSession_${videoId}`;
-    // Remove the session entry
-    await chrome.storage.local.remove([sessionKey]);
+    // Remove the temporary session
+    await libraryStore.deleteSession(videoId);
 
-    // Also wipe chatHistory from savedVideos for this video (keep the entry, just clear history)
-    const savedResult = await chrome.storage.local.get(['savedVideos']);
-    const savedVideos = savedResult.savedVideos || [];
-    const updated = savedVideos.map(v =>
-      v.videoId === videoId ? { ...v, chatHistory: [] } : v
-    );
-    await chrome.storage.local.set({ savedVideos: updated });
+    // Also wipe chatHistory from the saved video (keep the entry, just clear history)
+    const saved = await libraryStore.getVideo(videoId);
+    if (saved) {
+      await libraryStore.putVideo({ ...saved, chatHistory: [] });
+    }
 
     // Clear in-memory transcript cache
     transcriptData = '';
@@ -716,9 +713,7 @@ async function handleSummarize() {
     console.log('🎬 Checking for existing summary for video:', videoId);
     
     // PRIORITY 1: Check temporary session storage first (most recent with transcript)
-    const sessionKey = `liveChatSession_${videoId}`;
-    const sessionResult = await chrome.storage.local.get([sessionKey]);
-    const savedSession = sessionResult[sessionKey];
+    const savedSession = await libraryStore.getSession(videoId);
     
     if (savedSession && savedSession.videoData && savedSession.timestamp > Date.now() - (24 * 60 * 60 * 1000)) {
       console.log('🎬 Found existing session data:', savedSession.videoData.title);
@@ -742,9 +737,7 @@ async function handleSummarize() {
     }
     
     // PRIORITY 2: Check if this video is already saved with a summary in long-term storage
-    const savedVideosResult = await chrome.storage.local.get(['savedVideos']);
-    const savedVideos = savedVideosResult.savedVideos || [];
-    const existingSavedVideo = savedVideos.find(v => v.videoId === videoId);
+    const existingSavedVideo = await libraryStore.getVideo(videoId);
     
     if (existingSavedVideo && existingSavedVideo.chatHistory && existingSavedVideo.chatHistory.length > 0) {
       console.log('🎬 Found existing saved video with summary:', existingSavedVideo.title);

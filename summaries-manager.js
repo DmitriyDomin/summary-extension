@@ -7,6 +7,7 @@ class SummariesManager {
   async initialize() {
     this.container = document.getElementById('savedSummaries');
     await this.displaySavedContent();
+    if (window.librarySearchUI) window.librarySearchUI.init();
   }
 
   async displaySavedContent() {
@@ -15,7 +16,7 @@ class SummariesManager {
     this.container.innerHTML = '';
     
     // Display saved summaries
-    const savedSummaries = (await chrome.storage.local.get('savedSummaries')).savedSummaries || [];
+    const savedSummaries = await libraryStore.listSummaries();
     await this.displaySavedSummaries(savedSummaries);
     
     // Display saved videos
@@ -43,7 +44,7 @@ class SummariesManager {
             <button class="summary-action-btn summary__copy" data-index="${index}" title="Copy summary">
               <i class="fas fa-copy"></i>
             </button>
-            <button class="summary-action-btn summary__delete delete" data-index="${index}" title="Delete summary">
+            <button class="summary-action-btn summary__delete delete" data-index="${index}" data-id="${savedSummary.id}" title="Delete summary">
               <i class="fas fa-trash-alt"></i>
             </button>
           </div>
@@ -55,8 +56,7 @@ class SummariesManager {
     // Add event listeners for summary actions
     this.container.querySelectorAll('.summary__delete').forEach((button) => {
       button.addEventListener('click', (event) => {
-        const index = parseInt(button.getAttribute('data-index'));
-        this.deleteSummary(index);
+        this.deleteSummary(Number(button.getAttribute('data-id')));
       });
     });
 
@@ -69,8 +69,7 @@ class SummariesManager {
   }
 
   async displaySavedVideos() {
-    const result = await chrome.storage.local.get(['savedVideos']);
-    const savedVideos = result.savedVideos || [];
+    const savedVideos = await libraryStore.listVideos();
     
     if (savedVideos.length === 0) return;
     
@@ -83,34 +82,35 @@ class SummariesManager {
       this.container.appendChild(separator);
     }
     
+    const esc = (value) => LibrarySearchUI.escapeHtml(value == null ? '' : value);
     savedVideos.forEach((video, index) => {
       const videoElement = document.createElement('div');
       videoElement.className = 'saved-video';
       videoElement.innerHTML = `
-        <div class="video-card" data-video-id="${video.videoId}">
+        <div class="video-card" data-video-id="${esc(video.videoId)}">
           <div class="video-thumbnail-container">
-            <img src="${video.thumbnail}" alt="Video thumbnail" class="video-thumbnail">
+            <img src="${esc(video.thumbnail)}" alt="Video thumbnail" class="video-thumbnail">
             <div class="video-duration-overlay">
               <i class="fas fa-play"></i>
             </div>
           </div>
           <div class="video-info">
-            <h4 class="video-title">${video.title}</h4>
+            <h4 class="video-title">${esc(video.title)}</h4>
             <p class="video-saved-date">Saved: ${new Date(video.savedAt).toLocaleDateString()}</p>
             <div class="video-actions">
-              <button class="video-action-btn watch-btn" onclick="window.open('${video.url}', '_blank')" title="Watch on YouTube">
+              <button class="video-action-btn watch-btn" data-url="${esc(video.url)}" title="Open original">
                 <i class="fab fa-youtube"></i>
                 <span>Watch</span>
               </button>
-              <button class="video-action-btn chat-btn video-chat-btn" data-video-id="${video.videoId}" title="Open in Live Chat">
+              <button class="video-action-btn chat-btn video-chat-btn" data-video-id="${esc(video.videoId)}" title="Open in Live Chat">
                 <i class="fas fa-comments"></i>
                 <span>Chat</span>
               </button>
-              <button class="video-action-btn copy-transcript-btn" data-video-id="${video.videoId}" title="Copy transcript">
+              <button class="video-action-btn copy-transcript-btn" data-video-id="${esc(video.videoId)}" title="Copy transcript">
                 <i class="fas fa-copy"></i>
                 <span>Transcript</span>
               </button>
-              <button class="video-action-btn delete-btn video-delete-btn" data-video-index="${index}" title="Delete video">
+              <button class="video-action-btn delete-btn video-delete-btn" data-video-id="${esc(video.videoId)}" title="Delete video">
                 <i class="fas fa-trash-alt"></i>
                 <span>Delete</span>
               </button>
@@ -132,6 +132,15 @@ class SummariesManager {
       });
     });
 
+    // Inline onclick handlers are blocked by the extension CSP, so bind the open button here.
+    this.container.querySelectorAll('.watch-btn').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const url = button.getAttribute('data-url');
+        if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener');
+      });
+    });
+
     this.container.querySelectorAll('.video-chat-btn').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -143,8 +152,7 @@ class SummariesManager {
     this.container.querySelectorAll('.video-delete-btn').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.stopPropagation();
-        const index = parseInt(button.getAttribute('data-video-index'));
-        this.deleteVideo(index);
+        this.deleteVideo(button.getAttribute('data-video-id'));
       });
     });
 
@@ -157,10 +165,9 @@ class SummariesManager {
     });
   }
 
-  async deleteSummary(index) {
-    const savedSummaries = (await chrome.storage.local.get('savedSummaries')).savedSummaries || [];
-    savedSummaries.splice(index, 1);
-    await chrome.storage.local.set({ savedSummaries });
+  async deleteSummary(id) {
+    await libraryStore.deleteSummary(id);
+    window.librarySearch?.invalidate();
     await this.displaySavedContent();
   }
 
@@ -292,23 +299,18 @@ class SummariesManager {
     });
   }
 
-  async deleteVideo(index) {
+  async deleteVideo(videoId) {
     if (!confirm('Are you sure you want to delete this saved video?')) return;
     
-    const result = await chrome.storage.local.get(['savedVideos']);
-    const savedVideos = result.savedVideos || [];
-    
-    savedVideos.splice(index, 1);
-    await chrome.storage.local.set({ savedVideos });
+    await libraryStore.deleteVideo(videoId);
+    window.librarySearch?.invalidate();
     
     // Refresh the display
     await this.displaySavedContent();
   }
 
   async loadSavedVideo(videoId) {
-    const result = await chrome.storage.local.get(['savedVideos']);
-    const savedVideos = result.savedVideos || [];
-    return savedVideos.find(video => video.videoId === videoId);
+    return libraryStore.getVideo(videoId);
   }
 }
 

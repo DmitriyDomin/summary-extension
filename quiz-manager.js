@@ -130,9 +130,7 @@ class QuizManager {
           const urlParams = new URLSearchParams(new URL(activeTabInWindow.url).search);
           const currentVideoId = urlParams.get('v');
           youtubeTab = activeTabInWindow;
-          const sessionKey = `liveChatSession_${currentVideoId}`;
-          const sessionResult = await chrome.storage.local.get([sessionKey]);
-          const savedSession = sessionResult[sessionKey];
+          const savedSession = await libraryStore.getSession(currentVideoId);
           if (savedSession?.videoData) {
             this.currentVideoData = savedSession.videoData;
             this.updateVideoDisplay();

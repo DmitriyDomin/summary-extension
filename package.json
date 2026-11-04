@@ -3,10 +3,18 @@
   "version": "1.0.0",
   "main": "background.js",
   "scripts": {
-    "test": "node --test test/basic.test.js"
+    "test": "node --test \"test/*.test.js\""
   },
-  "keywords": ["chrome-extension", "summarizer", "youtube", "udemy"],
+  "keywords": [
+    "chrome-extension",
+    "summarizer",
+    "youtube",
+    "udemy"
+  ],
   "author": "Dmytro Domin",
   "license": "MIT",
-  "description": "Chrome extension that summarizes web pages, YouTube videos and Udemy lectures with an LLM."
+  "description": "Chrome extension that summarizes web pages, YouTube videos and Udemy lectures with an LLM.",
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.7"
+  }
 }

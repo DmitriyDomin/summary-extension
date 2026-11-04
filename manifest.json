@@ -28,7 +28,7 @@
     },
     {
       "matches": ["*://www.youtube.com/*", "*://youtube.com/*"],
-      "js": ["api-service.js", "chatgpt-integration.js", "youtube-content.js"],
+      "js": ["api-service.js", "library-store.js", "chatgpt-integration.js", "youtube-content.js"],
       "run_at": "document_idle"
     },
     {

@@ -395,17 +395,7 @@ function setupQuizPageFeatures() {
 }
 
 function setupSummariesPageFeatures() {
-    console.log('Setting up summaries page features');
-    
-    // Setup search functionality
-    const summaryInput = document.getElementById('summaryInput');
-    if (summaryInput) {
-        summaryInput.addEventListener('input', debounce(() => {
-            const searchTerm = summaryInput.value.toLowerCase();
-            console.log('Searching for:', searchTerm);
-            // This will be handled by the existing popup.js functionality
-        }, 300));
-    }
+    // Search is wired once by LibrarySearchUI (library-search-ui.js).
 }
 
 function setupSettingsPageFeatures() {

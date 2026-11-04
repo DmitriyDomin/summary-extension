@@ -145,9 +145,7 @@ class LiveChatManager {
       // Check storage in priority order:
       
       // 1. Check temporary session storage first (most recent data with transcript)
-      const sessionKey = `liveChatSession_${currentVideoId}`;
-      const sessionResult = await chrome.storage.local.get([sessionKey]);
-      const savedSession = sessionResult[sessionKey];
+      const savedSession = await libraryStore.getSession(currentVideoId);
 
 
       if (savedSession && savedSession.videoData && savedSession.timestamp > Date.now() - (24 * 60 * 60 * 1000)) {
@@ -157,9 +155,7 @@ class LiveChatManager {
       }
 
       // 2. Check if this video is saved in long-term storage
-      const savedVideosResult = await chrome.storage.local.get(['savedVideos']);
-      const savedVideos = savedVideosResult.savedVideos || [];
-      const savedVideo = savedVideos.find(v => v.videoId === currentVideoId);
+      const savedVideo = await libraryStore.getVideo(currentVideoId);
 
       if (savedVideo) {
         console.log('🎬 Found saved video, loading:', savedVideo.title);
@@ -290,12 +286,8 @@ class LiveChatManager {
       this.clearChatDisplay();
       
       // CRITICAL FIX: Check temporary session storage FIRST (for recent unsaved summaries)
-      const sessionKey = `liveChatSession_${videoData.videoId}`;
-      const sessionResult = await chrome.storage.local.get([sessionKey]);
-      const savedSession = sessionResult[sessionKey];
-      const savedVideosResult = await chrome.storage.local.get(['savedVideos']);
-      const savedVideos = savedVideosResult.savedVideos || [];
-      const doesExistInSaved = !!savedVideos.find(v => v.videoId === this.currentVideoId);
+      const savedSession = await libraryStore.getSession(videoData.videoId);
+      const doesExistInSaved = await libraryStore.hasVideo(videoData.videoId);
 
       if (savedSession && savedSession.videoData && savedSession.timestamp > Date.now() - (24 * 60 * 60 * 1000)) {
         console.log('🎬 Found temporary session for this video - loading from temp storage:', savedSession.videoData.title);
@@ -587,7 +579,6 @@ class LiveChatManager {
   async saveCurrentSession() {
     if (!this.currentVideoId || !this.youtubeLiveSummary) return;
     
-    const sessionKey = `liveChatSession_${this.currentVideoId}`;
     const sessionData = {
       videoData: {
         ...this.youtubeLiveSummary.currentVideoData,
@@ -600,7 +591,7 @@ class LiveChatManager {
     };
     
     try {
-      await chrome.storage.local.set({ [sessionKey]: sessionData });
+      await libraryStore.putSession(this.currentVideoId, sessionData);
       console.log('Temporary session saved for video:', this.currentVideoId);
     } catch (error) {
       console.error('Error saving temporary session:', error);
@@ -660,9 +651,7 @@ class LiveChatManager {
 
   async checkIfVideoSaved(videoId) {
     try {
-      const result = await chrome.storage.local.get(['savedVideos']);
-      const savedVideos = result.savedVideos || [];
-      return savedVideos.find(v => v.videoId === videoId);
+      return await libraryStore.getVideo(videoId);
     } catch (error) {
       console.error('Error checking saved videos:', error);
       return null;
@@ -733,26 +722,7 @@ class LiveChatManager {
     }
   }
 
-  // Clean up old sessions (call this periodically)
-  async cleanupOldSessions() {
-    const storage = await chrome.storage.local.get(null);
-    const keysToRemove = [];
-    const cutoffTime = Date.now() - (7 * 24 * 60 * 60 * 1000); // 7 days
-    
-    for (const key in storage) {
-      if (key.startsWith('liveChatSession_')) {
-        const session = storage[key];
-        if (!session.timestamp || session.timestamp < cutoffTime) {
-          keysToRemove.push(key);
-        }
-      }
-    }
-    
-    if (keysToRemove.length > 0) {
-      await chrome.storage.local.remove(keysToRemove);
-      console.log('Cleaned up', keysToRemove.length, 'old chat sessions');
-    }
-  }
+  // Old sessions (7+ days) are pruned by libraryStore whenever the library database opens.
 }
 
 // Export for use in popup

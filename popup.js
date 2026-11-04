@@ -185,7 +185,7 @@ async function handleSaveSummary() {
 
     if (summary && tags.length > 0) {
       const savedSummary = { summary, tags, timestamp: new Date().toISOString() };
-      const { savedSummaries = [] } = await chrome.storage.local.get('savedSummaries');
+      const savedSummaries = await libraryStore.listSummaries();
       
       if (savedSummaries.some(existingSummary => 
           existingSummary.tags.sort().toString() === tags.sort().toString())) {
@@ -194,8 +194,8 @@ async function handleSaveSummary() {
         return;
       }
       
-      savedSummaries.push(savedSummary);
-      await chrome.storage.local.set({ savedSummaries });
+      const savedId = await libraryStore.addSummary(savedSummary);
+      window.librarySearch?.indexSummary(savedId).catch((error) => console.warn('Indexing failed:', error));
       
       if (savedIcon) {
         savedIcon.classList.add('active');
@@ -805,28 +805,36 @@ async function forceSwitchToLiveTab(videoData = null) {
 
 // Set up runtime message listener
 function setupRuntimeMessageListener() {
-  chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
-    console.log('Popup received message:', request);
-    
-    if (request.action === "updateTags" && request.data) {
-      const tagsInput = document.getElementById("tags");
-      if (tagsInput) {
-        tagsInput.value = request.data;
-        const errorElement = document.getElementById('saveButtonError');
-        if (errorElement) errorElement.classList.remove('show');
-        
-        const saveButton = document.getElementById('saveButton');
-        if (saveButton) saveButton.disabled = false;
-      }
-    } else if (request.action === "openLiveSummary" && request.videoData) {
-      console.log('📺 Opening Live Summary with video data from runtime message:', request.videoData.title);
-      
-      // Use the shared initialization function to prevent duplicates
-      await initializeLiveChatWithVideoData(request.videoData, 'runtimeMessageListener');
-    }
-    
-    sendResponse({ success: true });
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // Library requests from content scripts are answered by the service worker. Answering them
+    // here too would win the race with a bogus { success: true } response.
+    if (request && request.action === 'library') return false;
+    handlePopupRuntimeMessage(request, sendResponse);
+    return false;
   });
+}
+
+async function handlePopupRuntimeMessage(request, sendResponse) {
+  console.log('Popup received message:', request);
+  
+  if (request.action === "updateTags" && request.data) {
+    const tagsInput = document.getElementById("tags");
+    if (tagsInput) {
+      tagsInput.value = request.data;
+      const errorElement = document.getElementById('saveButtonError');
+      if (errorElement) errorElement.classList.remove('show');
+      
+      const saveButton = document.getElementById('saveButton');
+      if (saveButton) saveButton.disabled = false;
+    }
+  } else if (request.action === "openLiveSummary" && request.videoData) {
+    console.log('📺 Opening Live Summary with video data from runtime message:', request.videoData.title);
+    
+    // Use the shared initialization function to prevent duplicates
+    await initializeLiveChatWithVideoData(request.videoData, 'runtimeMessageListener');
+  }
+  
+  sendResponse({ success: true });
 }
 
 // Page switching handlers (to work with tab-switcher.js)

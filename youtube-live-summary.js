@@ -120,9 +120,7 @@ class YouTubeLiveSummary {
 
   async checkIfVideoAlreadySaved(videoId) {
     try {
-      const result = await chrome.storage.local.get(['savedVideos']);
-      const savedVideos = result.savedVideos || [];
-      return savedVideos.find(v => v.videoId === videoId);
+      return await libraryStore.getVideo(videoId);
     } catch (error) {
       console.error('Error checking saved videos:', error);
       return null;
@@ -427,7 +425,6 @@ class YouTubeLiveSummary {
         console.log('🎬 Auto-saving chat history...');
         
         // Save to temporary session storage first
-        const sessionKey = `liveChatSession_${this.currentVideoData.videoId}`;
         const sessionData = {
           videoData: this.currentVideoData,
           chatHistory: this.chatHistory,
@@ -435,11 +432,11 @@ class YouTubeLiveSummary {
           autoSaved: true
         };
         
-        await chrome.storage.local.set({ [sessionKey]: sessionData });
+        await libraryStore.putSession(this.currentVideoData.videoId, sessionData);
         
         // Also update saved videos if this video is already saved
-        const savedVideo = await this.checkIfVideoAlreadySaved(this.currentVideoData.videoId);
-        if (savedVideo) {
+        const isSaved = await libraryStore.hasVideo(this.currentVideoData.videoId);
+        if (isSaved) {
           await this.updateSavedVideoWithNewChat();
         }
         
@@ -455,30 +452,27 @@ class YouTubeLiveSummary {
   // Update saved video with new chat history
   async updateSavedVideoWithNewChat() {
     try {
-      const result = await chrome.storage.local.get(['savedVideos']);
-      const savedVideos = result.savedVideos || [];
-      
-      const videoIndex = savedVideos.findIndex(v => v.videoId === this.currentVideoData.videoId);
-      if (videoIndex !== -1) {
-        // Update the chat history
-        savedVideos[videoIndex].chatHistory = this.chatHistory;
-        savedVideos[videoIndex].lastUpdated = new Date().toISOString();
+      const video = await libraryStore.getVideo(this.currentVideoData.videoId);
+      if (video) {
+        video.chatHistory = this.chatHistory;
+        video.lastUpdated = new Date().toISOString();
         
         // Update transcript data if available (for videos saved before transcript storage was implemented)
-        if (this.currentVideoData.transcript && !savedVideos[videoIndex].transcript) {
-          savedVideos[videoIndex].transcript = this.currentVideoData.transcript;
+        if (this.currentVideoData.transcript && !video.transcript) {
+          video.transcript = this.currentVideoData.transcript;
         }
-        if (this.currentVideoData.timestampedTranscript && !savedVideos[videoIndex].timestampedTranscript) {
-          savedVideos[videoIndex].timestampedTranscript = this.currentVideoData.timestampedTranscript;
+        if (this.currentVideoData.timestampedTranscript?.length && !video.timestampedTranscript?.length) {
+          video.timestampedTranscript = this.currentVideoData.timestampedTranscript;
         }
         
         // Update summary for display
         const latestSummary = this.chatHistory.find(h => h.type === 'summary')?.response;
         if (latestSummary) {
-          savedVideos[videoIndex].summary = latestSummary;
+          video.summary = latestSummary;
         }
         
-        await chrome.storage.local.set({ savedVideos });
+        await libraryStore.putVideo(video);
+        window.librarySearch?.indexVideo(video.videoId).catch((error) => console.warn('Indexing failed:', error));
         console.log('🎬 Updated saved video with new chat history and transcript data');
       }
     } catch (error) {
@@ -689,13 +683,12 @@ class YouTubeLiveSummary {
               this.currentVideoData.timestampedTranscript = transcriptResponse.timestampedTranscript;
               
               // Save the updated video data to session storage
-              const sessionKey = `liveChatSession_${this.currentVideoData.videoId}`;
               const sessionData = {
                 videoData: this.currentVideoData,
                 chatHistory: this.chatHistory || [],
                 timestamp: Date.now()
               };
-              await chrome.storage.local.set({ [sessionKey]: sessionData });
+              await libraryStore.putSession(this.currentVideoData.videoId, sessionData);
             }
           }
         } catch (error) {
@@ -1155,18 +1148,12 @@ Based on the video content above, please provide a detailed and helpful response
     }
 
     try {
-      // Get existing saved videos with detailed logging
-      console.log('🎬 handleSaveVideo: Getting existing saved videos...');
-      const result = await chrome.storage.local.get(['savedVideos']);
-      const savedVideos = result.savedVideos || [];
-      console.log('🎬 handleSaveVideo: Found', savedVideos.length, 'existing saved videos');
-
-      // Check if already saved with detailed logging
-      const existingIndex = savedVideos.findIndex(v => v.videoId === this.currentVideoData.videoId);
-      console.log('🎬 handleSaveVideo: Checking for duplicate, existingIndex:', existingIndex);
+      // Check if already saved
+      console.log('🎬 handleSaveVideo: Checking for an existing saved copy...');
+      const alreadySaved = await libraryStore.hasVideo(this.currentVideoData.videoId);
       
-      if (existingIndex !== -1) {
-        console.log('🎬 handleSaveVideo: Video already saved at index:', existingIndex);
+      if (alreadySaved) {
+        console.log('🎬 handleSaveVideo: Video already saved');
         alert('This video is already saved!');
         
         // Reset button
@@ -1262,15 +1249,12 @@ Based on the video content above, please provide a detailed and helpful response
         hasSummary: !!videoSaveData.summary
       });
 
-      // Add new video
-      savedVideos.push(videoSaveData);
-      console.log('🎬 handleSaveVideo: Added video to array, new length:', savedVideos.length);
-
-      // Save to storage with error handling
-      console.log('🎬 handleSaveVideo: Saving to chrome.storage.local...');
-      await chrome.storage.local.set({ savedVideos });
+      // Save the video (one record per video, no whole-library rewrite)
+      console.log('🎬 handleSaveVideo: Saving to the library...');
+      await libraryStore.putVideo(videoSaveData);
       
       console.log('🎬 handleSaveVideo: ✅ Video successfully saved to storage');
+      window.librarySearch?.indexVideo(videoSaveData.videoId).catch((error) => console.warn('Indexing failed:', error));
       
       // Update save button to show it's saved
       this.updateSaveButtonForSavedVideo();
