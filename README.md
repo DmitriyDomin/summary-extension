@@ -8,7 +8,9 @@ A Chrome extension (Manifest V3) that summarizes web pages, YouTube videos and U
 - Selectable summary length and output language (EN, DE, ES, FR, IT, PT, RU, UA)
 - A saved library of videos, Udemy lectures and page summaries, with no cap on how many you keep
 - Search across everything you saved by keywords and, with an API key, by meaning (finds "baking" when the video says "pastry")
+- Export the whole library as JSON (a full backup you can import into another browser) or as Markdown notes, and see how much space each video uses with a one-click way to drop its transcript but keep the summary
 - Quiz generation from the summarized content
+- Plain-language error messages: an invalid key, an exhausted quota and rate limiting are told apart
 - Optional export of Udemy lecture notes to Notion through your own n8n webhook
 
 ## Install (development)
@@ -35,12 +37,16 @@ A Chrome extension (Manifest V3) that summarizes web pages, YouTube videos and U
 | `background.js` | Service worker, side panel and Gemini requests |
 | `popup.html` / `popup.js` | Side panel UI and settings |
 | `api-service.js` | OpenAI and Google AI client |
+| `api-errors.js` | Turns provider failures into actionable messages |
+| `summary-utils.js` | Prompt building, parsing of model replies and of YouTube caption files (pure, unit tested) |
+| `yt-main-bridge.js` | Tiny page-world script that hands the playing video's caption tracks to the content script |
 | `youtube-content.js`, `youtube-live-summary.js`, `live-chat-manager.js` | YouTube integration |
 | `udemy-content.js`, `n8n-integration.js` | Udemy integration and optional Notion export |
 | `quiz-manager.js` | Quiz generation |
 | `library-store.js` | IndexedDB storage for saved videos, summaries and chat sessions (proxied through the service worker for content scripts) |
 | `library-search.js` | Chunking, BM25 keyword search, embeddings and hybrid ranking |
 | `library-search-ui.js` | Search box and results on the Saved page |
+| `library-export.js` | JSON export/import, Markdown rendering and storage-size helpers (pure, unit tested) |
 | `test/` | Unit tests (`npm test`) |
 | `_locales/` | Translations |
 
