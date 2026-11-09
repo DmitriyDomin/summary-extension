@@ -25,6 +25,7 @@ function loadScript(src) {
     await loadScript('api-service.js');
 
     // Storage layer and search (IndexedDB), needed by every manager below
+    await loadScript('library-export.js');
     await loadScript('library-store.js');
     await loadScript('library-search.js');
     

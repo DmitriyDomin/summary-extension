@@ -1,5 +1,5 @@
 // Enhanced background script with improved side panel communication
-importScripts('library-store.js');
+importScripts('library-export.js', 'library-store.js');
 
 const temporaryData = {};
 

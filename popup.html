@@ -415,6 +415,13 @@
                         </div>
                     </div>
                 </div>
+                <div class="library-tools" id="libraryTools">
+                    <button type="button" class="library-tool-btn" id="exportJsonBtn" title="Back up everything, including transcripts"><i class="fas fa-download"></i> Export JSON</button>
+                    <button type="button" class="library-tool-btn" id="exportMarkdownBtn" title="Summaries and chats as readable notes"><i class="fas fa-file-alt"></i> Export Markdown</button>
+                    <button type="button" class="library-tool-btn" id="importJsonBtn" title="Restore a JSON export, existing items are kept"><i class="fas fa-upload"></i> Import</button>
+                    <input type="file" id="importJsonInput" accept="application/json,.json" hidden>
+                    <span class="library-tools-status" id="libraryToolsStatus" role="status"></span>
+                </div>
                 <div class="library-search-status" id="librarySearchStatus"></div>
                 <div class="library-search-results" id="librarySearchResults" hidden></div>
                 <div class="summaries-grid" id="savedSummaries"></div>

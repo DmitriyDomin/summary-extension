@@ -151,3 +151,47 @@ test('handleMessage serves proxied calls and rejects unknown methods', async () 
   assert.strictEqual(store.handleMessage({ action: 'library', method: 'drop' }, respond), false);
   assert.strictEqual(reply.ok, false);
 });
+
+test('listVideos reports an estimated size per video', async () => {
+  await store.putVideo(makeVideo(1));
+  await store.putVideo(makeVideo(2, { transcript: '', timestampedTranscript: [] }));
+  const [big, small] = await store.listVideos();
+  assert.ok(big.sizeBytes > 100000);
+  assert.ok(small.sizeBytes < 200);
+});
+
+test('removeTranscript frees the transcript but keeps summary, chat and link', async () => {
+  await store.putVideo(makeVideo(1));
+  assert.strictEqual(await store.removeTranscript('vid1'), true);
+  const video = await store.getVideo('vid1');
+  assert.strictEqual(video.transcript, '');
+  assert.deepStrictEqual(video.timestampedTranscript, []);
+  assert.strictEqual(video.transcriptRemoved, true);
+  assert.strictEqual(video.summary, 'Summary 1');
+  assert.strictEqual(video.chatHistory.length, 1);
+  const [light] = await store.listVideos();
+  assert.strictEqual(light.hasTranscript, false);
+  assert.ok(light.sizeBytes < 200);
+  assert.strictEqual(await store.removeTranscript('missing'), false);
+});
+
+test('exportAll returns full videos and summaries; importPlanned adds without overwriting', async () => {
+  await store.putVideo(makeVideo(1));
+  await store.addSummary({ summary: 'Page one', tags: ['a'], timestamp: 't1' });
+  const library = await store.exportAll();
+  assert.strictEqual(library.videos.length, 1);
+  assert.ok(library.videos[0].transcript.length > 1000);
+  assert.strictEqual(library.summaries.length, 1);
+
+  const exportMod = require('../library-export.js');
+  const prepared = exportMod.prepareImport(exportMod.buildExport({
+    videos: [makeVideo(1, { summary: 'changed' }), makeVideo(2)],
+    summaries: [{ summary: 'Page one', tags: ['a'], timestamp: 't1' }, { summary: 'Page two', tags: [], timestamp: 't2' }],
+  }));
+  const plan = exportMod.planImport(prepared, (await store.listVideos()).map((v) => v.videoId), await store.listSummaries());
+  assert.deepStrictEqual(await store.importPlanned(plan), { videos: 1, summaries: 1 });
+
+  assert.strictEqual((await store.getVideo('vid1')).summary, 'Summary 1');
+  assert.strictEqual((await store.getVideo('vid2')).title, 'Video 2');
+  assert.strictEqual((await store.listSummaries()).length, 2);
+});

@@ -168,8 +168,13 @@
     );
   }
 
+  // Size is estimated by library-export.js, which every context that lists videos loads first.
+  const exporter = () => root.LibraryExport || (typeof require === 'function' ? require('./library-export.js') : null);
+
   const lightVideo = (video) => {
     const copy = { ...video };
+    const lib = exporter();
+    copy.sizeBytes = lib ? lib.approxBytes(video) : 0;
     HEAVY_VIDEO_FIELDS.forEach((field) => delete copy[field]);
     copy.hasTranscript = !!(video.transcript && video.transcript.length);
     copy.transcriptLength = video.transcript ? video.transcript.length : 0;
@@ -227,6 +232,37 @@
         await deleteChunksFor(chunks, index, docIdForVideo(videoId));
       });
       return true;
+    },
+
+    // Frees most of a video's storage but keeps the summary, the chat and the link. The
+    // search index notices the changed text and rebuilds its entries on the next visit.
+    async removeTranscript(videoId) {
+      const video = await withStores('videos', 'readonly', (store) => reqToPromise(store.get(videoId)));
+      if (!video) return false;
+      await withStores('videos', 'readwrite', (store) =>
+        reqToPromise(store.put({ ...video, transcript: '', timestampedTranscript: [], transcriptRemoved: true }))
+      );
+      return true;
+    },
+
+    // Whole library, for the JSON/Markdown export. Includes transcripts.
+    async exportAll() {
+      const [videos, summaries] = await Promise.all([
+        withStores('videos', 'readonly', (store) => reqToPromise(store.getAll())),
+        withStores('summaries', 'readonly', (store) => reqToPromise(store.getAll())),
+      ]);
+      videos.sort((a, b) => String(a.savedAt || '').localeCompare(String(b.savedAt || '')));
+      return { videos, summaries };
+    },
+
+    // Adds what is not saved yet and never overwrites existing entries.
+    async importPlanned({ newVideos, newSummaries }) {
+      await withStores(['videos', 'summaries'], 'readwrite', (videos, summaries) => {
+        newVideos.forEach((video) => videos.put(video));
+        newSummaries.forEach((summary) => summaries.add(summary));
+        return Promise.resolve();
+      });
+      return { videos: newVideos.length, summaries: newSummaries.length };
     },
 
     // Page summaries ---------------------------------------------------------------------

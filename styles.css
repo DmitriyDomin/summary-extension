@@ -2544,6 +2544,42 @@ input:checked + .slider:before {
   background: var(--accent-secondary);
 }
 
+/* Library tools (export / import) */
+.library-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-md);
+}
+
+.library-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-color, #cbd5e1);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.library-tool-btn:hover {
+  background: var(--bg-tertiary);
+}
+
+.library-tools-status {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.library-tools-status.error {
+  color: #dc2626;
+}
+
 /* Library search (Saved page) */
 .library-search-status {
   font-size: 12px;

@@ -8,6 +8,90 @@ class SummariesManager {
     this.container = document.getElementById('savedSummaries');
     await this.displaySavedContent();
     if (window.librarySearchUI) window.librarySearchUI.init();
+    this.bindLibraryTools();
+  }
+
+  bindLibraryTools() {
+    if (this.toolsBound) return;
+    const byId = (id) => document.getElementById(id);
+    const json = byId('exportJsonBtn');
+    if (!json) return;
+    this.toolsBound = true;
+    json.addEventListener('click', () => this.exportLibrary('json'));
+    byId('exportMarkdownBtn').addEventListener('click', () => this.exportLibrary('markdown'));
+    const input = byId('importJsonInput');
+    byId('importJsonBtn').addEventListener('click', () => input.click());
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (file) await this.importLibrary(file);
+    });
+  }
+
+  setToolsStatus(message, isError = false) {
+    const el = document.getElementById('libraryToolsStatus');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.toggle('error', isError);
+  }
+
+  download(filename, text, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async exportLibrary(kind) {
+    try {
+      const library = await libraryStore.exportAll();
+      if (!library.videos.length && !library.summaries.length) {
+        this.setToolsStatus('Nothing saved yet, so there is nothing to export.', true);
+        return;
+      }
+      const day = new Date().toISOString().slice(0, 10);
+      if (kind === 'json') {
+        const data = LibraryExport.buildExport(library);
+        this.download(`summary-library-${day}.json`, JSON.stringify(data), 'application/json');
+      } else {
+        this.download(`summary-library-${day}.md`, LibraryExport.libraryToMarkdown(library), 'text/markdown');
+      }
+      this.setToolsStatus(`Exported ${library.videos.length} videos and ${library.summaries.length} page summaries.`);
+    } catch (error) {
+      console.error('Export failed:', error);
+      this.setToolsStatus(`Export failed: ${error.message}`, true);
+    }
+  }
+
+  async importLibrary(file) {
+    try {
+      const prepared = LibraryExport.prepareImport(JSON.parse(await file.text()));
+      const [videos, summaries] = await Promise.all([libraryStore.listVideos(), libraryStore.listSummaries()]);
+      const plan = LibraryExport.planImport(prepared, videos.map((v) => v.videoId), summaries);
+      const added = await libraryStore.importPlanned(plan);
+      window.librarySearch?.invalidate();
+      await this.displaySavedContent();
+      window.librarySearchUI?.init();
+      const parts = [`Imported ${added.videos} videos and ${added.summaries} page summaries.`];
+      if (plan.duplicates) parts.push(`${plan.duplicates} already saved were kept as they are.`);
+      if (prepared.skipped) parts.push(`${prepared.skipped} unreadable entries were skipped.`);
+      this.setToolsStatus(parts.join(' '));
+    } catch (error) {
+      const unreadable = error instanceof SyntaxError ? 'That file is not valid JSON.' : error.message;
+      this.setToolsStatus(`Import failed: ${unreadable}`, true);
+    }
+  }
+
+  async removeTranscript(videoId) {
+    const ok = confirm('Remove the transcript for this video? The summary and your chat stay, but the chat can no longer use the full transcript. You can summarize the video again later to get it back.');
+    if (!ok) return;
+    await libraryStore.removeTranscript(videoId);
+    window.librarySearch?.invalidate();
+    await this.displaySavedContent();
   }
 
   async displaySavedContent() {
@@ -32,14 +116,14 @@ class SummariesManager {
       summaryElement.innerHTML = `
         <div class="summary-card-header">
           <div class="summary-tags">
-            ${savedSummary.tags.map(tag => `<span class="summary-tag">${tag}</span>`).join('')}
+            ${(savedSummary.tags || []).map(tag => `<span class="summary-tag">${LibrarySearchUI.escapeHtml(tag)}</span>`).join('')}
           </div>
           <div class="summary-timestamp">
             ${new Date(savedSummary.timestamp).toLocaleDateString()}
           </div>
         </div>
         <div class="summary-content">
-          <div class="summary-text">${savedSummary.summary}</div>
+          <div class="summary-text">${LibrarySearchUI.escapeHtml(savedSummary.summary)}</div>
           <div class="summary-actions">
             <button class="summary-action-btn summary__copy" data-index="${index}" title="Copy summary">
               <i class="fas fa-copy"></i>
@@ -96,7 +180,7 @@ class SummariesManager {
           </div>
           <div class="video-info">
             <h4 class="video-title">${esc(video.title)}</h4>
-            <p class="video-saved-date">Saved: ${new Date(video.savedAt).toLocaleDateString()}</p>
+            <p class="video-saved-date">Saved: ${new Date(video.savedAt).toLocaleDateString()} · ${esc(LibraryExport.formatBytes(video.sizeBytes))}${video.transcriptRemoved ? ' · transcript removed' : ''}</p>
             <div class="video-actions">
               <button class="video-action-btn watch-btn" data-url="${esc(video.url)}" title="Open original">
                 <i class="fab fa-youtube"></i>
@@ -110,6 +194,10 @@ class SummariesManager {
                 <i class="fas fa-copy"></i>
                 <span>Transcript</span>
               </button>
+              ${video.hasTranscript ? `<button class="video-action-btn free-space-btn" data-video-id="${esc(video.videoId)}" title="Remove the transcript, keep the summary">
+                <i class="fas fa-compress-alt"></i>
+                <span>Free space</span>
+              </button>` : ''}
               <button class="video-action-btn delete-btn video-delete-btn" data-video-id="${esc(video.videoId)}" title="Delete video">
                 <i class="fas fa-trash-alt"></i>
                 <span>Delete</span>
@@ -153,6 +241,13 @@ class SummariesManager {
       button.addEventListener('click', (event) => {
         event.stopPropagation();
         this.deleteVideo(button.getAttribute('data-video-id'));
+      });
+    });
+
+    this.container.querySelectorAll('.free-space-btn').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.removeTranscript(button.getAttribute('data-video-id'));
       });
     });
 
@@ -214,6 +309,7 @@ class SummariesManager {
   async openVideoDetails(videoId) {
     const video = await this.loadSavedVideo(videoId);
     if (!video) return;
+    const esc = (value) => LibrarySearchUI.escapeHtml(value == null ? '' : value);
     
     // Create a modal to show video details
     const modal = document.createElement('div');
@@ -221,13 +317,13 @@ class SummariesManager {
     modal.innerHTML = `
       <div class="modal-content">
         <div class="modal-header">
-          <h3>${video.title}</h3>
+          <h3>${esc(video.title)}</h3>
           <button class="modal-close">×</button>
         </div>
         <div class="modal-body">
           <div class="video-details-section">
             <h4>Summary</h4>
-            <p>${video.summary || 'No summary available'}</p>
+            <p>${esc(video.summary) || 'No summary available'}</p>
           </div>
           ${video.bulletPoints ? `
             <div class="video-details-section">
@@ -242,8 +338,8 @@ class SummariesManager {
             </div>
           ` : ''}
           <div class="modal-actions">
-            <a href="${video.url}" target="_blank" class="button">Watch Video</a>
-            <button class="load-in-chat-btn" data-video-id="${video.videoId}">Open in Live Chat</button>
+            <a href="${esc(video.url)}" target="_blank" rel="noopener noreferrer" class="button">Watch Video</a>
+            <button class="load-in-chat-btn" data-video-id="${esc(video.videoId)}">Open in Live Chat</button>
           </div>
         </div>
       </div>
