@@ -20,6 +20,7 @@ function loadScript(src) {
   try {
     // Load API service first (this is critical for other scripts)
     console.log('📦 Loading API service...');
+    await loadScript('api-errors.js');
     await loadScript('api-service.js');
 
     // Storage layer and search (IndexedDB), needed by every manager below

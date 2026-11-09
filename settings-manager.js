@@ -152,16 +152,13 @@ class SettingsManager {
 
       if (response.ok) {
         this.updateStatus('✓ Connection successful', 'success');
-      } else if (response.status === 401) {
-        this.updateStatus('⚠ Invalid API key', 'error');
-      } else if (response.status === 429) {
-        this.updateStatus('⚠ Rate limit exceeded', 'error');
       } else {
-        this.updateStatus('⚠ Connection failed', 'error');
+        const body = await response.json().catch(() => ({}));
+        this.updateStatus(`⚠ ${ApiErrors.describeApiError({ provider: 'openai', status: response.status, error: body })}`, 'error');
       }
     } catch (error) {
       console.error('Error testing API connection:', error);
-      this.updateStatus('⚠ Network error', 'error');
+      this.updateStatus(`⚠ ${ApiErrors.describeApiError({ provider: 'openai', message: error.message })}`, 'error');
     } finally {
       // Re-enable button
       this.testButton.disabled = false;

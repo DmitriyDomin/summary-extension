@@ -1,4 +1,8 @@
 // API Service - Centralized service for AI API requests
+const userError = (message) => Object.assign(new Error(message), { userFacing: true });
+const describeApiError = (details) =>
+  (typeof ApiErrors !== 'undefined' ? ApiErrors : require('./api-errors.js')).describeApiError(details);
+
 class ApiService {
   constructor() {
     this.openaiBaseUrl = 'https://api.openai.com/v1/chat/completions';
@@ -34,14 +38,8 @@ class ApiService {
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Invalid API key. Please check your OpenAI API key in settings.');
-      } else if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Please try again later.');
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`OpenAI API request failed: ${errorData.error?.message || response.statusText}`);
-      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(describeApiError({ provider: 'openai', status: response.status, error: errorData }));
     }
 
     const data = await response.json();
@@ -104,16 +102,13 @@ class ApiService {
           { action: 'geminiRequest', endpoint, body: requestBody },
           (response) => {
             if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
+              reject(userError(chrome.runtime.lastError.message));
             } else if (!response || !response.ok) {
-              const msg = response?.error || 'Unknown error';
-              if (response?.status === 400 && msg.includes('API key')) {
-                reject(new Error('Invalid Google AI API key. Please check your API key in settings.'));
-              } else if (response?.status === 429) {
-                reject(new Error('Quota exceeded. Please wait a moment and try again.'));
-              } else {
-                reject(new Error(`Google AI API request failed: ${msg}`));
-              }
+              reject(userError(describeApiError({
+                provider: 'google',
+                status: response?.status,
+                message: response?.error || 'Unknown error'
+              })));
             } else {
               resolve(response.data);
             }
@@ -125,7 +120,7 @@ class ApiService {
 
       // Check if we have a valid response
       if (!data.candidates || data.candidates.length === 0) {
-        throw new Error('No response generated. The content may have been filtered for safety reasons.');
+        throw userError('No response generated. The content may have been filtered for safety reasons.');
       }
       
       // Extract text from response
@@ -142,11 +137,9 @@ class ApiService {
       
       return responseText.trim();
     } catch (error) {
-      if (error.message?.includes('Invalid Google AI API key')) {
-        throw error; // Rethrow specific API key errors
-      } else {
-        throw new Error(`Google AI API request failed: ${error.message}`);
-      }
+      // Already a readable message from describeApiError or from the safety-filter check above.
+      if (error.userFacing) throw error;
+      throw new Error(describeApiError({ provider: 'google', message: error.message }));
     }
   }
 
