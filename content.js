@@ -1,4 +1,3 @@
-const lengthMap = { short: 50, medium: 100, long: 200 };
 const TARGET_LANGUAGE = 'targetLanguage';
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -33,18 +32,17 @@ async function handleSummarization(request, sendResponse) {
     // Get user preferences
     const targetLanguage = await getStorageValue(TARGET_LANGUAGE);
     const textLength = await getStorageValue('textLength') || 'medium';
-    const length = lengthMap[textLength] || lengthMap.medium;
     
     // Prepare content and prompt
     let content, prompt;
     if (request.action === 'summarize') {
       content = request.text;
-      prompt = `${content}\n\nSummarize the following text to approximately ${length} words. Include a clear title in parentheses () and indicate the original language in square brackets [].`;
+      prompt = SummaryUtils.buildPageSummaryPrompt({ text: content, length: textLength });
     } else {
       content = document.body.innerText;
       const title = document.title || 'Web Page';
       const url = document.URL;
-      prompt = `Title: ${title}\nURL: ${url}\nContent: ${content}\n\nSummarize this webpage content to approximately ${length} words. Include a clear title in parentheses () and indicate the original language in square brackets [].`;
+      prompt = SummaryUtils.buildPageSummaryPrompt({ text: content, title, url, length: textLength });
     }
     
     // Generate summary using secure API
@@ -190,17 +188,8 @@ function displaySummary(summary, topic) {
   // document.body.appendChild(summaryDiv);
 }
 
-function parseText(text) {
-  const topic = text.match(/\(([^)]+)\)/)[1];
-  let newText = text.replace(`(${topic})`, '');
-  return [newText, topic];
-}
-
-function getLanguage(text) {
-  const lang = text.match(/\[(.*?)\]/)[1];
-  let newText = text.replace(`[${lang}]`, '');
-  return [newText, lang];
-}
+const parseText = (text) => SummaryUtils.extractTitle(text, 'Summary');
+const getLanguage = (text) => SummaryUtils.extractLanguage(text, 'en');
 
 function dragElement(elmnt) {
   var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;

@@ -49,3 +49,32 @@ test('no API keys or private webhooks are committed', () => {
     for (const p of patterns) assert.ok(!p.test(text), `${f} matches secret pattern ${p}`);
   }
 });
+
+test('content scripts load the shared helpers they use, in the right order', () => {
+  const manifest = JSON.parse(read('manifest.json'));
+  const needs = [
+    ['SummaryUtils', 'summary-utils.js'],
+    ['ApiErrors', 'api-errors.js'],
+    ['apiService', 'api-service.js'],
+    ['generateSecureSummary', 'secure-api.js'],
+  ];
+  for (const cs of manifest.content_scripts) {
+    const files = cs.js || [];
+    files.forEach((file, index) => {
+      const source = read(file);
+      for (const [symbol, provider] of needs) {
+        if (file === provider || !new RegExp(`\\b${symbol}\\b`).test(source)) continue;
+        const at = files.indexOf(provider);
+        assert.ok(at !== -1 && at < index, `${file} uses ${symbol} but ${provider} is not loaded before it for ${cs.matches[0]}`);
+      }
+    });
+  }
+});
+
+test('the YouTube bridge runs in the page world at document start', () => {
+  const manifest = JSON.parse(read('manifest.json'));
+  const bridge = manifest.content_scripts.find((cs) => (cs.js || []).includes('yt-main-bridge.js'));
+  assert.ok(bridge);
+  assert.strictEqual(bridge.world, 'MAIN');
+  assert.strictEqual(bridge.run_at, 'document_start');
+});

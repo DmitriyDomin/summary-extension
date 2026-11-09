@@ -60,33 +60,8 @@ async function makeApiRequest(prompt) {
 }
 
 // Helper functions for parsing
-function parseText(text) {
-  try {
-    const match = text.match(/\(([^)]+)\)/);
-    if (match) {
-      const topic = match[1];
-      const newText = text.replace(`(${topic})`, '');
-      return [newText.trim(), topic];
-    }
-  } catch (e) {
-    console.warn('Could not parse topic from text');
-  }
-  return [text, 'YouTube Video Summary'];
-}
-
-function getLanguage(text) {
-  try {
-    const match = text.match(/\[(.*?)\]/);
-    if (match) {
-      const lang = match[1];
-      const newText = text.replace(`[${lang}]`, '');
-      return [newText.trim(), lang];
-    }
-  } catch (e) {
-    console.warn('Could not parse language from text');
-  }
-  return [text, 'en'];
-}
+const parseText = (text) => SummaryUtils.extractTitle(text, 'YouTube Video Summary');
+const getLanguage = (text) => SummaryUtils.extractLanguage(text, 'en');
 
 // Import styles for summary display
 function importStyles() {
@@ -236,62 +211,46 @@ function getVideoId() {
   return urlParams.get('v');
 }
 
-// Extract transcript using ytInitialPlayerResponse (uses YouTube's own caption URLs)
+// Extract transcript from the caption tracks of the playing video (YouTube's own caption URLs)
 // Returns { transcript: string, segments: array|null } or null
+// Asks the main-world bridge (yt-main-bridge.js) for the playing video's caption tracks.
+function requestPlayerData(timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    const finish = (value) => {
+      clearTimeout(timer);
+      window.removeEventListener('summary-ext:player-response', onResponse);
+      resolve(value);
+    };
+    const onResponse = (event) => {
+      try {
+        finish(JSON.parse(event.detail));
+      } catch (_) {
+        finish(null);
+      }
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    window.addEventListener('summary-ext:player-response', onResponse);
+    window.dispatchEvent(new CustomEvent('summary-ext:player-request'));
+  });
+}
+
 async function fetchTranscriptFromPlayerResponse() {
   try {
-    const tracks = window.ytInitialPlayerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (!tracks?.length) return null;
+    const player = await requestPlayerData();
+    const currentId = new URLSearchParams(window.location.search).get('v');
+    // After in-page navigation the data can still belong to the previous video.
+    if (!player || (currentId && player.videoId && player.videoId !== currentId)) return null;
 
-    const track = tracks.find(t => t.languageCode === 'en' && !t.kind) ||
-                  tracks.find(t => t.languageCode?.startsWith('en')) ||
-                  tracks.find(t => t.kind === 'asr') ||
-                  tracks[0];
+    const track = SummaryUtils.pickCaptionTrack(player.captionTracks);
     if (!track?.baseUrl) return null;
 
     const url = track.baseUrl.includes('fmt=') ? track.baseUrl : `${track.baseUrl}&fmt=json3`;
     const res = await fetch(url);
     if (!res.ok) return null;
 
-    const text = await res.text();
-    if (!text?.trim()) return null;
-
-    if (text.trim().startsWith('{')) {
-      const data = JSON.parse(text);
-      if (!data.events?.length) return null;
-
-      const segments = [];
-      data.events.filter(e => e.segs && e.tStartMs !== undefined).forEach(e => {
-        const startTime = Math.floor(e.tStartMs / 1000);
-        const duration = e.dDurationMs ? Math.floor(e.dDurationMs / 1000) : 5;
-        const segText = e.segs.map(s => s.utf8 || '').join('').trim();
-        if (!segText) return;
-        const mins = Math.floor(startTime / 60);
-        const secs = startTime % 60;
-        segments.push({
-          text: segText,
-          startTime,
-          endTime: startTime + duration,
-          timestamp: `${mins}:${secs.toString().padStart(2, '0')}`,
-          youtubeTimestamp: `${startTime}s`
-        });
-      });
-
-      if (!segments.length) return null;
-      const transcript = segments.map(s => s.text).join(' ').replace(/\s+/g, ' ').trim();
-      if (transcript.length < 50) return null;
-      console.log(`Fetched transcript via ytInitialPlayerResponse: ${segments.length} segments`);
-      return { transcript, segments };
-
-    } else if (text.trim().startsWith('<')) {
-      const xml = new DOMParser().parseFromString(text, 'text/xml');
-      const transcript = Array.from(xml.querySelectorAll('text'))
-        .map(t => t.textContent.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").trim())
-        .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-      if (transcript.length < 50) return null;
-      console.log('Fetched transcript via ytInitialPlayerResponse (XML)');
-      return { transcript, segments: null };
-    }
+    const result = SummaryUtils.parseTranscriptFile(await res.text());
+    if (result) console.log(`Fetched transcript from caption track: ${result.segments.length} segments`);
+    return result;
   } catch (e) {
     console.log('fetchTranscriptFromPlayerResponse failed:', e.message);
   }
@@ -867,10 +826,7 @@ async function handleOpenInGPT() {
     if (!transcript) throw new Error('Could not fetch transcript');
 
     // Truncate to ~80k chars — enough for any video, avoids storage quota errors
-    const MAX_TRANSCRIPT_CHARS = 80000;
-    if (transcript.length > MAX_TRANSCRIPT_CHARS) {
-      transcript = transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '\n[transcript truncated]';
-    }
+    transcript = SummaryUtils.truncateTranscript(transcript);
     
     const title = document.querySelector('h1.ytd-watch-metadata')?.textContent?.trim() || 'YouTube Video';
     const videoUrl = window.location.href;
@@ -1120,67 +1076,22 @@ async function extractTimestampedTranscriptFromPage() {
     await activateTranscriptPanel();
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Look for transcript segments with timestamps
-    const segmentSelectors = [
-      'ytd-transcript-segment-renderer',
-      '[data-testid="transcript-segment"]',
-      '.transcript-segment'
+    // Both the current layout (transcript-segment-view-model) and the older renderer.
+    const layouts = [
+      { row: 'transcript-segment-view-model', time: '.ytwTranscriptSegmentViewModelTimestamp', text: 'span[role="text"], .ytAttributedStringHost' },
+      { row: 'ytd-transcript-segment-renderer', time: '.segment-timestamp', text: '.segment-text, yt-formatted-string.ytd-transcript-segment-renderer' }
     ];
-    
-    for (const selector of segmentSelectors) {
-      const segments = document.querySelectorAll(selector);
-      if (segments.length > 0) {
-        const timestampedSegments = [];
-        let plainTranscript = '';
-        
-        segments.forEach(segment => {
-          try {
-            // Look for timestamp and text elements
-            const timestampEl = segment.querySelector('[class*="timestamp"], .segment-timestamp, [data-testid="timestamp"]');
-            const textEl = segment.querySelector('.segment-text, [class*="segment-text"], [data-testid="segment-text"]') || segment;
-            
-            if (textEl) {
-              const text = textEl.textContent?.trim();
-              let timestamp = timestampEl ? timestampEl.textContent?.trim() : null;
-              
-              if (text && text.length > 0) {
-                // Parse timestamp if available
-                let startTime = 0;
-                if (timestamp && timestamp.match(/\d+:\d+/)) {
-                  const parts = timestamp.split(':');
-                  if (parts.length === 2) {
-                    startTime = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-                  } else if (parts.length === 3) {
-                    startTime = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
-                  }
-                }
-                
-                timestampedSegments.push({
-                  text: text,
-                  startTime: startTime,
-                  endTime: startTime + 5, // Estimate 5 second duration
-                  timestamp: timestamp || `${Math.floor(startTime / 60)}:${(startTime % 60).toString().padStart(2, '0')}`,
-                  youtubeTimestamp: `${startTime}s`
-                });
-                
-                plainTranscript += text + ' ';
-              }
-            }
-          } catch (e) {
-            console.log('Error processing segment:', e);
-          }
-        });
-        
-        if (timestampedSegments.length > 0) {
-          return {
-            transcript: plainTranscript.replace(/\s+/g, ' ').trim(),
-            timestampedTranscript: timestampedSegments,
-            success: true
-          };
-        }
+    for (const layout of layouts) {
+      const rows = Array.from(document.querySelectorAll(layout.row)).map((el) => ({
+        timestamp: el.querySelector(layout.time)?.textContent?.trim() || '',
+        text: (el.querySelector(layout.text) || el).textContent
+      }));
+      const result = SummaryUtils.segmentsFromRows(rows);
+      if (result) {
+        return { transcript: result.transcript, timestampedTranscript: result.segments, success: true };
       }
     }
-    
+
     // Fallback to regular extraction
     const regularTranscript = await extractTranscriptFromPage();
     if (regularTranscript && regularTranscript !== 'No transcript available') {

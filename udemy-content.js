@@ -25,83 +25,17 @@ function buildUdemyVideoDataObject({ transcript, lessonTitle, courseTitle, url }
   };
 }
 
-// Built-in API functions (similar to YouTube script)
-async function getApiKey() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(['apiKey'], (result) => {
-      if (chrome.runtime.lastError) {
-        console.error('Error getting API key:', chrome.runtime.lastError);
-        resolve(null);
-        return;
-      }
-      resolve(result.apiKey || null);
-    });
-  });
-}
-
 async function makeApiRequest(prompt) {
-  const apiKey = await getApiKey();
-  
+  const apiKey = await apiService.getApiKey('openai');
   if (!apiKey) {
     throw new Error('API key not configured. Please set your OpenAI API key in the extension settings.');
   }
-  
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 300,
-      temperature: 0.3
-    })
-  });
-  
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Invalid API key. Please check your OpenAI API key.');
-    } else if (response.status === 429) {
-      throw new Error('Rate limit exceeded. Please try again later.');
-    } else {
-      throw new Error(`API request failed: ${response.statusText}`);
-    }
-  }
-  
-  const data = await response.json();
-  return data.choices[0].message.content.trim();
+  return apiService.getOpenAIResponse(apiKey, 'gpt-4o-mini', prompt, 800, 0.3);
 }
 
 // Helper functions for parsing
-function parseText(text) {
-  try {
-    const match = text.match(/\(([^)]+)\)/);
-    if (match) {
-      const topic = match[1];
-      const newText = text.replace(`(${topic})`, '');
-      return [newText.trim(), topic];
-    }
-  } catch (e) {
-    console.warn('Could not parse topic from text');
-  }
-  return [text, 'Udemy Course Summary'];
-}
-
-function getLanguage(text) {
-  try {
-    const match = text.match(/\[(.*?)\]/);
-    if (match) {
-      const lang = match[1];
-      const newText = text.replace(`[${lang}]`, '');
-      return [newText.trim(), lang];
-    }
-  } catch (e) {
-    console.warn('Could not parse language from text');
-  }
-  return [text, 'en'];
-}
+const parseText = (text) => SummaryUtils.extractTitle(text, 'Udemy Course Summary');
+const getLanguage = (text) => SummaryUtils.extractLanguage(text, 'en');
 
 // Listen for messages from background/popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -812,7 +746,7 @@ async function handleUdemySummarize() {
     const courseTitle = getCourseTitle();
     
     // Send for summarization
-    const prompt = `Course: ${courseTitle}\nLesson: ${lessonTitle}\n\nTranscript: ${transcript}\n\nSummarize this Udemy lecture transcript in a clear and concise manner.`;
+    const prompt = SummaryUtils.buildLecturePrompt({ courseTitle, lessonTitle, transcript });
     
     const summary = await makeApiRequest(prompt);
     let [updatedSummary, originalLang] = getLanguage(summary);
@@ -1055,7 +989,7 @@ async function handleSummarization(request, sendResponse) {
       throw new Error('No transcript available for this lecture');
     }
     
-    const prompt = `Course: ${courseTitle}\nLesson: ${lessonTitle}\n\nTranscript: ${transcript}\n\nSummarize this Udemy lecture transcript in a clear and concise manner. Include a title in parentheses () and language in brackets [].`;
+    const prompt = SummaryUtils.buildLecturePrompt({ courseTitle, lessonTitle, transcript, withMetadataRequest: true });
     
     const summary = await makeApiRequest(prompt);
     let [updatedSummary, originalLang] = getLanguage(summary);

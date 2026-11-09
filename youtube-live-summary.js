@@ -575,57 +575,12 @@ class YouTubeLiveSummary {
   }
 
   buildContextualPrompt(userMessage, isAutomatic) {
-    let prompt = '';
-    
-    if (this.currentVideoData?.transcript) {
-      prompt += `Video Title: ${this.currentVideoData.title}\n`;
-      prompt += `Video URL: ${this.currentVideoData.url}\n`;
-      
-      // Include timestamped transcript if available
-      if (this.currentVideoData.timestampedTranscript && this.currentVideoData.timestampedTranscript.length > 0) {
-        prompt += `Timestamped Transcript:\n`;
-        this.currentVideoData.timestampedTranscript.forEach(segment => {
-          prompt += `[${segment.timestamp}] ${segment.text}\n`;
-        });
-        prompt += '\n';
-      } else {
-        prompt += `Transcript: ${this.currentVideoData.transcript}\n\n`;
-      }
-    }
-    
-    // Add recent chat history for context (limit to last 5 exchanges to avoid token limits)
-    if (this.chatHistory && this.chatHistory.length > 0 && !isAutomatic) {
-      prompt += `Previous Conversation:\n`;
-      const recentHistory = this.chatHistory.slice(-5); // Get last 5 exchanges
-      recentHistory.forEach(chat => {
-        if (chat.type !== 'summary') { // Don't repeat the summary in context
-          prompt += `User: ${chat.message}\n`;
-        }
-        prompt += `Assistant: ${chat.response}\n\n`;
-      });
-      prompt += `---\n\n`;
-    }
-    
-    if (isAutomatic) {
-      prompt += userMessage;
-    } else {
-      prompt += `Based on the video content above, please answer this question: ${userMessage}`;
-      
-      // If user asks about specific time or wants to watch something, suggest timestamps
-      if (userMessage.toLowerCase().includes('time') || 
-          userMessage.toLowerCase().includes('when') || 
-          userMessage.toLowerCase().includes('where') ||
-          userMessage.toLowerCase().includes('minute') ||
-          userMessage.toLowerCase().includes('part') ||
-          userMessage.toLowerCase().includes('section')) {
-        prompt += '\n\nIMPORTANT: If relevant to the question, provide specific timestamps in the format [MM:SS] where the user can find the information in the video. Make these timestamps clickable references to the exact moments in the video.';
-      }
-      
-      // Enhanced prompt for better AI responses
-      prompt += '\n\nPlease provide a detailed and helpful response. If you reference specific parts of the video, include the relevant timestamps so the user can easily navigate to those sections.';
-    }
-    
-    return prompt;
+    return SummaryUtils.buildChatPrompt({
+      video: this.currentVideoData,
+      chatHistory: this.chatHistory,
+      message: userMessage,
+      isAutomatic
+    });
   }
 
   async makeApiRequest(prompt) {
